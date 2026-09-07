@@ -324,7 +324,6 @@ TEST(SteamProcessTracker, WindowsSnapshotIncludesCurrentProcessIdentity) {
   EXPECT_NE(current->second.start_time_ticks, 0U);
 }
 #endif
-
 #ifdef __linux__
 TEST(SteamProcessTracker, LinuxSnapshotIncludesCurrentUserProcess) {
   const auto processes = lifecycle::snapshot_processes();
