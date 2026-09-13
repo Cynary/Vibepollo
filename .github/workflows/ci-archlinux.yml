@@ -33,9 +33,8 @@ jobs:
       COMMIT: ${{ inputs.release_commit }}
     permissions:
       contents: read
-    # AMBIDEX-Linux runs trusted builds in the existing Arch container.
-    # Pull requests and forks continue to use disposable GitHub-hosted runners.
-    runs-on: ${{ github.repository == 'Nonary/Vibepollo' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted", "Linux", "X64", "linux-release"]') || fromJSON('["ubuntu-latest"]') }}
+    # AMBIDEX-Linux is registered only to Vibeshine, not this repository.
+    runs-on: ubuntu-latest
     container:
       image: archlinux/archlinux:base-devel
       options: --cpus 8 --memory 16g
