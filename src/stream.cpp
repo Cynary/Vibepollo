@@ -1829,6 +1829,7 @@ namespace stream {
       // We may not have gotten far enough to have an ENet connection yet.
       send_termination(session);
 
+      input::reset(session->input);
       session->shutdown_event->raise(true);
       session->controlEnd.raise(true);
     }
@@ -3131,6 +3132,7 @@ namespace stream {
         return;
       }
 
+      input::reset(session.input);
       session.shutdown_event->raise(true);
     }
 
@@ -3176,6 +3178,9 @@ namespace stream {
         }
       });
 
+      // Release input before any potentially hung capture joins.
+      input::reset(session.input);
+
       // Current Nvidia drivers have a bug where NVENC can deadlock the encoder thread with hardware-accelerated
       // GPU scheduling enabled. If this happens, we will terminate ourselves and the service can restart.
       // The alternative is that Sunshine can never start another session until it's manually restarted.
@@ -3206,10 +3211,6 @@ namespace stream {
       // terminate_on_pause runs the same multi-second terminate() inline.
       // Trapping on any of that is a false positive that would kill every other
       // live stream.
-
-      // Reset input on session stop to avoid stuck repeated keys
-      BOOST_LOG(debug) << "Resetting Input..."sv;
-      input::reset(session.input);
 
       // Serialize the ownership transition and shared cleanup. Normal session
       // reaping acquires the lifecycle gate only after the blocking joins
