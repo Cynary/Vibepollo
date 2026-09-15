@@ -36,6 +36,7 @@ private_display = (root / "src/platform/linux/private_display.cpp").read_text()
 display_power = (linux / "vibepollo-display-power.h").read_text()
 display_power_client = (root / "src/platform/linux/display_power.cpp").read_text()
 frame_limiter = (root / "src/platform/linux/frame_limiter.cpp").read_text()
+wayland_hdr_policy = (root / "src/platform/linux/wayland_hdr_compatibility.h").read_text()
 rtsp = (root / "src/rtsp.cpp").read_text()
 stream = (root / "src/stream.cpp").read_text()
 kmsgrab = (root / "src/platform/linux/kmsgrab.cpp").read_text()
@@ -333,6 +334,9 @@ require(frame_limiter, 'std::getenv("VIBEPOLLO_MACHINE_HOST")', "machine-host gl
 require(frame_limiter, '"/usr/libexec/vibeshine/vibepollo-session-exec", "global-limiter"',
         "machine-host global limiter broker")
 forbid(frame_limiter, "VIBESHINE_MACHINE_HOST", "global limiter source-only environment")
+require(host, '"VIBEPOLLO_SESSION_TYPE=wayland"', "managed Wayland session type")
+require(wayland_hdr_policy, 'std::getenv("VIBEPOLLO_SESSION_TYPE")', "managed Wayland HDR policy")
+forbid(wayland_hdr_policy, "VIBESHINE_SESSION_TYPE", "Wayland HDR source-only environment")
 
 # API restart of the private child exits back to the readiness-gating wrapper.
 # Ordinary Linux launches retain the historical atexit self-reexec path.
