@@ -6,6 +6,12 @@
 #include <map>
 #include <vector>
 
+#ifdef _WIN32
+  #include <windows.h>
+#elif defined(__linux__)
+  #include <unistd.h>
+#endif
+
 namespace lifecycle = platf::steam::lifecycle;
 
 TEST(SteamTrackingExit, PersistsUntilCleanupEvenWhenTheLauncherSurvives) {
@@ -112,6 +118,21 @@ TEST(SteamBigPicture, IncompleteBaselineDisablesCleanup) {
   auto before = snapshot({});
   before.complete = false;
   EXPECT_TRUE(lifecycle::big_picture_tree(before, snapshot({steam_process(20, 1, "/game", 42)})).empty());
+}
+
+TEST(SteamBigPicture, WatermarkCleansNewGamesWhenBaselineIsIncomplete) {
+  auto before = snapshot({});
+  before.complete = false;
+  const auto after = snapshot({steam_process(20, 1, "/game", 42)});
+  EXPECT_TRUE(lifecycle::big_picture_tree(before, after, 2000).empty());
+  ASSERT_EQ(lifecycle::big_picture_tree(before, after, 1999).processes.size(), 1U);
+}
+
+TEST(SteamBigPicture, WatermarkExcludesOlderProcessesMissingFromBaseline) {
+  const auto before = snapshot({});
+  const auto after = snapshot({steam_process(20, 1, "/game", 42)});
+  EXPECT_TRUE(lifecycle::big_picture_tree(before, after, 2000).empty());
+  EXPECT_TRUE(lifecycle::big_picture_tree(before, after).processes.contains(20));
 }
 
 TEST(SteamBigPicture, ParsesOnlyCompleteNumericSteamAppIdEnvironmentEntries) {
@@ -292,3 +313,25 @@ TEST(SteamProcessTracker, RefusesToSignalWhenPidIdentityChanged) {
   EXPECT_EQ(result.skipped, 1U);
   EXPECT_TRUE(controller.signals.empty());
 }
+
+#ifdef _WIN32
+TEST(SteamProcessTracker, WindowsSnapshotIncludesCurrentProcessIdentity) {
+  const auto processes = lifecycle::snapshot_processes();
+  ASSERT_TRUE(processes.has_value());
+  const auto current = processes->processes.find(GetCurrentProcessId());
+  ASSERT_NE(current, processes->processes.end());
+  EXPECT_FALSE(current->second.executable.empty());
+  EXPECT_NE(current->second.start_time_ticks, 0U);
+}
+#endif
+
+#ifdef __linux__
+TEST(SteamProcessTracker, LinuxSnapshotIncludesCurrentUserProcess) {
+  const auto processes = lifecycle::snapshot_processes();
+  ASSERT_TRUE(processes.has_value());
+  const auto current = processes->processes.find(static_cast<lifecycle::process_id_t>(getpid()));
+  ASSERT_NE(current, processes->processes.end());
+  EXPECT_NE(current->second.start_time_ticks, 0U);
+  EXPECT_TRUE(processes->complete);
+}
+#endif
