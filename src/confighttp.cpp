@@ -3521,7 +3521,7 @@ namespace confighttp {
     }
     print_req(request);
 
-    send_response(response, host_stats_to_json(host_stats::latest()));
+    send_response(response, host_stats_to_json(host_stats::latest_for_consumer()));
   }
 
   // Static host info â€” model strings + total RAM/VRAM, sampled once.
