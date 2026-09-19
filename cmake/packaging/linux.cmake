@@ -348,7 +348,7 @@ set(CPACK_DEBIAN_PACKAGE_DEPENDS "\
             libopus0, \
             libpulse0, \
             pulseaudio-utils, \
-            python3, \
+            python3 (>= 3.9), \
             libva2, \
             libva-drm2, \
             libwayland-client0, \
@@ -364,6 +364,7 @@ set(CPACK_RPM_PACKAGE_REQUIRES "\
             /usr/bin/pactl, \
             /usr/bin/parec, \
             /usr/bin/python3, \
+            (python3 >= 3.9 or /usr/bin/python3.11), \
             /usr/bin/wayland-info, \
             /usr/bin/xdpyinfo, \
             libcap >= 2.22, \
