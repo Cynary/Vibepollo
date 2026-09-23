@@ -24,6 +24,8 @@ extern "C" {
 #include "config.h"
 #include "globals.h"
 #include "input.h"
+#include "native_controller.h"
+#include <moonlight-common-c/src/NativeController.h>
 #include "logging.h"
 #include "mouse_input.h"
 #include "platform/common.h"
@@ -223,6 +225,7 @@ namespace input {
     task_pool_util::TaskPool::task_id_t key_press_repeat_id {};
     uint16_t repeating_key = 0;
 
+    std::unique_ptr<native_controller::session> native;
     std::vector<gamepad_t> gamepads;
     std::unique_ptr<platf::client_input_t> client_context;
 
@@ -284,6 +287,8 @@ namespace input {
         return packet_size_bounds_t {sizeof(SS_CONTROLLER_TOUCH_PACKET), sizeof(SS_CONTROLLER_TOUCH_PACKET)};
       case SS_CONTROLLER_MOTION_MAGIC:
         return packet_size_bounds_t {sizeof(SS_CONTROLLER_MOTION_PACKET), sizeof(SS_CONTROLLER_MOTION_PACKET)};
+      case LI_NATIVE_CONTROLLER_INPUT_MAGIC:
+        return packet_size_bounds_t {sizeof(NV_INPUT_HEADER)+80,sizeof(NV_INPUT_HEADER)+80};
       case SS_CONTROLLER_BATTERY_MAGIC:
         return packet_size_bounds_t {sizeof(SS_CONTROLLER_BATTERY_PACKET), sizeof(SS_CONTROLLER_BATTERY_PACKET)};
       default:
@@ -1814,6 +1819,20 @@ namespace input {
       case SS_CONTROLLER_MOTION_MAGIC:
         passthrough(input, (PSS_CONTROLLER_MOTION_PACKET) payload);
         break;
+      case LI_NATIVE_CONTROLLER_INPUT_MAGIC: {
+        native_controller::message m{};std::memcpy(m.data(),reinterpret_cast<const uint8_t*>(payload)+sizeof(NV_INPUT_HEADER),m.size());
+        if(!LiNativeValidate(m.data(),m.size(),0))break;
+        if(m[1]==LI_NATIVE_ATTACH) {
+          if(!input->native)input->native=native_controller::attach([queue=input->feedback_queue](const native_controller::message& message){
+            platf::gamepad_feedback_msg_t out{};out.type=platf::gamepad_feedback_e::native_controller;out.native_message=message;queue->raise(out);
+          });
+          platf::gamepad_feedback_msg_t out{};out.type=platf::gamepad_feedback_e::native_controller;
+          out.native_message[0]=1;out.native_message[1]=input->native?LI_NATIVE_ACCEPT:LI_NATIVE_ERROR;out.native_message[2]=input->native?0:1;
+          input->feedback_queue->raise(out);
+        } else if(m[1]==LI_NATIVE_DETACH)input->native.reset();
+        else if(input->native)input->native->receive(m);
+        break;
+      }
       case SS_CONTROLLER_BATTERY_MAGIC:
         passthrough(input, (PSS_CONTROLLER_BATTERY_PACKET) payload);
         break;
@@ -1859,6 +1878,7 @@ namespace input {
         case SS_CONTROLLER_ARRIVAL_MAGIC:
         case SS_CONTROLLER_TOUCH_MAGIC:
         case SS_CONTROLLER_MOTION_MAGIC:
+        case LI_NATIVE_CONTROLLER_INPUT_MAGIC:
         case SS_CONTROLLER_BATTERY_MAGIC:
           if (!(permission & crypto::PERM::input_controller)) {
             return;
@@ -1954,6 +1974,7 @@ namespace input {
       for (const auto &[client_key, held] : input->keys) {
         release_key(held);
       }
+      input->native.reset();
       input->keys.clear();
       input->shortcutFlags = 0;
       for (auto &gamepad : input->gamepads) {

@@ -1,3 +1,4 @@
+#include "native_controller.h"
 /**
  * @file src/nvhttp.cpp
  * @brief Definitions for the nvhttp (GameStream) server.
@@ -3764,6 +3765,7 @@ namespace nvhttp {
         }
       }
       tree.put("root.ServerCodecModeSupport", codec_mode_flags);
+      tree.put("root.MoonmachineNativeController", native_controller::enabled()?1:0);
 
       tree.put("root.PairStatus", pair_status);
 
