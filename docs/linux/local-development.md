@@ -121,7 +121,7 @@ requirement; it never applies a file rollback over the package database. Package
 hooks and dependency changes are not covered by the file updater's rollback journal.
 
 On both paths, installation refuses to start while an application launched by
-the host (`vibeshine-app-*.service` in your user manager) is still running,
+the host (`vibepollo-app-*.service` in your user manager) is still running,
 because installing stops it together with the capture host. Quit the game or end
 the stream and rerun with `--skip-build`, or pass `--allow-disruption`.
 

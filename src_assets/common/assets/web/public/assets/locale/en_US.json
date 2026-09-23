@@ -1406,7 +1406,7 @@
       "why": "Windows only captures a frame when it redraws the virtual screen, so a faster virtual screen captures each game frame sooner and frames reach your device evenly.",
       "whyCap": "With automatic refresh, the 2× desktop admission guard prevents unnecessary WGC workload while preserving 4× frame admission for confirmed games.",
       "autoHeading": "Vibepollo handles this automatically:",
-      "step1": "With automatic refresh, keeps the virtual display at 8× refresh; WGC admits frames at 2× the requested stream rate on the desktop and 4× for a confirmed game.",
+      "step1": "Uses a 1000 Hz virtual screen for VRR clients and 4× stream refresh otherwise; WGC caps capture at 2× on the desktop and 4× for confirmed games.",
       "step2Nvidia": "With automatic refresh, uses the 2× desktop admission guard to avoid unnecessary WGC workload and allows 4× frame admission for a confirmed game.",
       "step2Generic": "With automatic refresh, uses the 2× desktop admission guard to avoid unnecessary WGC workload and allows 4× frame admission for a confirmed game.",
       "step3": "Restores any temporary limiter settings when the stream ends.",

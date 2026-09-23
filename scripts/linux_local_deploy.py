@@ -780,7 +780,7 @@ def install_driver(directory, manifest):
                    'if [[ "$deploy_kernel" != "$(uname -r)" ]]; then load_module() { return 0; }; fi; '
                    'main install')
     for kernel in manifest['driver']['kernels']:
-        print(f'Building/installing Vibeshine DS5 for {kernel}', flush=True)
+        print(f'Building/installing Vibepollo DS5 for {kernel}', flush=True)
         code = driver_command(['/usr/bin/bash', '-c', ds5_wrapper, 'vibeshine-ds5-upgrade', kernel])
         returncodes.append(code)
         if code not in (0, 4):
@@ -982,9 +982,9 @@ def refuse_live_applications(args):
     if args.allow_disruption:
         return
     result = run('systemctl', '--user', 'list-units', '--plain', '--no-legend', '--no-pager',
-                 '--state=active', 'vibeshine-app-*.service', check=False)
+                 '--state=active', 'vibepollo-app-*.service', check=False)
     if result.returncode:
-        raise DeployError('Could not list running Vibeshine applications; '
+        raise DeployError('Could not list running Vibepollo applications; '
                           'pass --allow-disruption to install anyway')
     running = [line.split()[0] for line in result.stdout.splitlines() if line.strip()]
     if running:
