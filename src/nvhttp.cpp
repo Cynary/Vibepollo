@@ -1,3 +1,4 @@
+#include "native_controller.h"
 /**
  * @file src/nvhttp.cpp
  * @brief Definitions for the nvhttp (GameStream) server.
@@ -3848,6 +3849,7 @@ namespace nvhttp {
         codec_mode_flags |= pyrowave::protocol::SCM_MASK_PYROWAVE;
       }
       tree.put("root.ServerCodecModeSupport", codec_mode_flags);
+      tree.put("root.MoonmachineNativeController", native_controller::enabled()?1:0);
 
       tree.put("root.PairStatus", pair_status);
     // This is the host's outbound physical link, not measured end-to-end

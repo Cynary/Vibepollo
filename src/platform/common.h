@@ -105,9 +105,11 @@ namespace platf {
     set_rgb_led,  ///< Set RGB LED
     set_adaptive_triggers,  ///< Set adaptive triggers
     haptics_pcm,  ///< 5 ms of 48 kHz S16LE stereo actuator samples
+    native_controller,  ///< Experimental native Steam Controller feedback
   };
 
   struct gamepad_feedback_msg_t {
+    std::array<std::uint8_t,80> native_message {};
     static gamepad_feedback_msg_t make_rumble(std::uint16_t id, std::uint16_t lowfreq, std::uint16_t highfreq) {
       gamepad_feedback_msg_t msg;
       msg.type = gamepad_feedback_e::rumble;

@@ -1263,6 +1263,11 @@ namespace stream {
       std::memcpy(bytes + ML_HAPTICS_HEADER_SIZE, msg.data.haptics.samples.data(), msg.data.haptics.samples.size());
       std::array<std::uint8_t, sizeof(control_encrypted_t) + crypto::cipher::round_to_pkcs7_padded(sizeof(plaintext)) + crypto::cipher::tag_size> encrypted_payload;
       payload = encode_control(session, std::string_view(reinterpret_cast<const char *>(plaintext.data()), plaintext.size()), encrypted_payload);
+    } else if (msg.type == platf::gamepad_feedback_e::native_controller) {
+      struct {control_header_v2 header;std::array<uint8_t,80> message;} plaintext{};
+      plaintext.header.type=0x55f0;plaintext.header.payloadLength=80;plaintext.message=msg.native_message;
+      std::array<std::uint8_t,sizeof(control_encrypted_t)+crypto::cipher::round_to_pkcs7_padded(sizeof(plaintext))+crypto::cipher::tag_size> encrypted_payload;
+      payload=encode_control(session,util::view(plaintext),encrypted_payload);
     } else if (msg.type == platf::gamepad_feedback_e::rumble) {
       control_rumble_t plaintext;
       plaintext.header.type = packetTypes[IDX_RUMBLE_DATA];
