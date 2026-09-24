@@ -63,6 +63,7 @@ namespace native_controller {
       struct request {
         steam_native::operation op;
         std::chrono::steady_clock::time_point deadline;
+        bool completed_on_enqueue;
       };
 
       std::unordered_map<std::uint64_t, request> pending;
@@ -109,7 +110,12 @@ namespace native_controller {
                 }
               }
               if (allowed && pending.size() < 32) {
-                pending.emplace(p.id, request {p.op, now + std::chrono::seconds(2)});
+                // Haptic output is a queued command, not a feature query. Waiting
+                // for its physical USB completion across the network serializes
+                // Steam's haptic worker and builds seconds of stale effects.
+                const bool haptic_output = p.op == steam_native::operation::write &&
+                                           (p.data[0] == 0x80 || p.data[0] == 0x81);
+                pending.emplace(p.id, request {p.op, now + std::chrono::seconds(2), haptic_output});
               } else {
                 allowed = false;
               }
@@ -117,6 +123,11 @@ namespace native_controller {
             if (allowed) {
               feature_requests++;
               send(out);
+              if (p.op == steam_native::operation::write && (p.data[0] == 0x80 || p.data[0] == 0x81)) {
+                steam_native::response r {};
+                r.id = p.id;
+                call(steam_native::reply, &r, sizeof(r), nullptr, 0);
+              }
             } else {
               steam_native::response r {};
               r.id = p.id;
@@ -161,7 +172,11 @@ namespace native_controller {
           r.status = m[2] ? -1 : 0;
           r.size = m[4];
           std::memcpy(r.data, m.data() + 16, r.size);
-          call(steam_native::reply, &r, sizeof(r), nullptr, 0);
+          if (!it->second.completed_on_enqueue) {
+            call(steam_native::reply, &r, sizeof(r), nullptr, 0);
+          } else if (r.status) {
+            BOOST_LOG(warning) << "Native Steam Controller haptic delivery failed for request " << id;
+          }
           feature_replies++;
           pending.erase(it);
         }
