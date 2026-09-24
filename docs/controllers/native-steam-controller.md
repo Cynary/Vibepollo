@@ -36,3 +36,25 @@ The tester also confirmed local Steam menu navigation immediately after ending
 the stream, without pairing or reconnecting. Concurrent local input isolation
 while streaming, sleep recovery, and the complete guided control checklist
 have not been fully validated.
+
+## Write completion and input latency
+
+Validated output and setting writes complete after forwarding to the bounded
+transport queue. They do not wait for a client round trip. Physical replies still
+retire outstanding requests and report delivery failures. Read queries remain
+pending until the real reply arrives; reads are not cached because a preceding
+setting command may select which information the controller returns.
+
+The client executes commands in order, so a read follows earlier writes even
+though Windows has already received write completion. At most 32 requests are
+outstanding, with two-second expiry. Input reports do not wait for acknowledgements.
+
+The Windows driver-poll thread uses a high-resolution one-millisecond wait.
+`Sleep(1)` previously produced a roughly 15.6 ms polling cadence on the test host,
+causing Steam's haptic worker to accumulate seconds of delay. The corrected
+300-command, 250-Hz finite-pulse test completed in 1.22 seconds: mean write
+completion 1.78 ms, median 1.18 ms, p99 9.45 ms, maximum 10.95 ms. Before correcting
+the wait, the same test took 4.71 seconds with mean completion 15.43 ms.
+These measure Windows write-call completion, not the time a motor physically
+moves. The run had no command-delivery failures or new Steam haptic backlog
+warnings. In-game trackpad behavior still requires user confirmation.
