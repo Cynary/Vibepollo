@@ -39,6 +39,7 @@ extern "C" {
 
 // local includes
 #include "config.h"
+#include "host_frame_trace.h"
 #include "crypto.h"
 #include "display_device.h"
 #include "display_helper_integration.h"
@@ -2401,6 +2402,7 @@ namespace stream {
         double burst_max_send_ms = 0.0;
         std::size_t burst_fallback_batches = 0;
 
+        std::chrono::steady_clock::time_point diagnostic_first_send {};
         auto blockIndex = 0;
         std::for_each(fec_blocks_begin, fec_blocks_end, [&](std::string_view &current_payload) {
           auto packets = (current_payload.size() + (blocksize - 1)) / blocksize;
@@ -2517,6 +2519,8 @@ namespace stream {
               batch_info.block_offset = next_shard_to_send;
               batch_info.block_count = current_batch_size;
 
+              if (diagnostic_first_send == std::chrono::steady_clock::time_point {})
+                diagnostic_first_send = std::chrono::steady_clock::now();
               frame_send_batch_latency_logger.first_point_now();
               const auto send_start = std::chrono::steady_clock::now();
               if (!burst_first_send) {
@@ -2595,6 +2599,14 @@ namespace stream {
         }
 
         const auto send_complete_timestamp = std::chrono::steady_clock::now();
+        static thread_local host_frame_trace::recorder frame_trace;
+        frame_trace.add({packet->frame_index(), timestamp, packet->data_size(), frame_is_dupe,
+          host_frame_trace::us(packet->capture_timestamp.value_or(*packet->frame_timestamp)),
+          host_frame_trace::us(packet->host_processing_timestamp.value_or(std::chrono::steady_clock::time_point {})),
+          host_frame_trace::us(packet->diagnostic_encode_start), host_frame_trace::us(packet->diagnostic_encode_end),
+          host_frame_trace::us(packet->packet_enqueue_timestamp), host_frame_trace::us(packet_pop_timestamp),
+          host_frame_trace::us(diagnostic_first_send), host_frame_trace::us(send_complete_timestamp)});
+
 #ifdef __linux__
         {
           const auto source_timestamp = packet->capture_timestamp.value_or(*packet->frame_timestamp);
