@@ -24,6 +24,10 @@ revision. Their protocol headers must match.
 Builds and wire-format tests pass. An end-to-end synthetic test delivered 4,920
 reports to the Windows viewer with zero malformed reports; a longer count at
 stream teardown reported 7,368 accepted inputs and zero rejected inputs. Normal
-stream teardown removed the HID device. Real hardware controls, haptics, local
-input isolation and sleep recovery still require validation. This branch is a
+stream teardown removed the HID device. Physical testing received 1,344 real reports in five seconds with zero malformed
+reports. Steam Input identified controller type 17 and supplied orientation.
+Left and right haptic output was felt on the physical controller. Reconnecting
+received another 4,721 reports with zero malformed reports without re-pairing.
+A finite-pulse comparison produced three matching bursts on each side, confirmed
+by the tester. Local input isolation and sleep recovery still require validation. This branch is a
 development build, not a replacement release for all Vibepollo features.
