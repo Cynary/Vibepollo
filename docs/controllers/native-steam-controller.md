@@ -31,3 +31,8 @@ received another 4,721 reports with zero malformed reports without re-pairing.
 A finite-pulse comparison produced three matching bursts on each side, confirmed
 by the tester. Local input isolation and sleep recovery still require validation. This branch is a
 development build, not a replacement release for all Vibepollo features.
+
+The tester also confirmed local Steam menu navigation immediately after ending
+the stream, without pairing or reconnecting. Concurrent local input isolation
+while streaming, sleep recovery, and the complete guided control checklist
+have not been fully validated.
