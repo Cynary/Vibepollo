@@ -1,3 +1,4 @@
+#include "../../wgc_stage_trace.h"
 /**
  * @file src/platform/windows/display_wgc.cpp
  * @brief Windows Game Capture (WGC) IPC display implementation with shared session helper and DXGI fallback.
@@ -269,7 +270,9 @@ namespace platf::dxgi {
 
     timeout = effective_wgc_timeout(timeout, _config.framerate);
 
+    wgc_stage_trace::capture("frame_event_wait_start");
     auto capture_status = _ipc_session->wait_for_frame(timeout);
+    wgc_stage_trace::capture("frame_event_wait_end");
     if (capture_status != capture_e::ok) {
       if (capture_status == capture_e::timeout) {
         if (wgc_stall_requires_dxgi_fallback(_wgc_stall_start, _last_secure_desktop_probe)) {
@@ -317,10 +320,12 @@ namespace platf::dxgi {
     // mutex. The encoder image pool can block under pressure; holding the
     // shared mutex during that wait stalls the WGC helper producer.
     std::shared_ptr<platf::img_t> img;
+    wgc_stage_trace::capture("image_pool_wait_start");
     if (!pull_free_image_cb(img)) {
       return capture_e::interrupted;
     }
 
+    wgc_stage_trace::capture("image_pool_wait_end");
     auto d3d_img = std::static_pointer_cast<img_d3d_t>(img);
     if (complete_img(d3d_img.get(), false)) {
       return capture_e::error;
@@ -333,7 +338,9 @@ namespace platf::dxgi {
     // frames at the source. Taking the encoder mutex first keeps the shared
     // IPC mutex critical section bounded to the GPU-copy submission only.
     const auto capture_mutex_wait_start = std::chrono::steady_clock::now();
+    wgc_stage_trace::capture("image_mutex_wait_start");
     HRESULT status = d3d_img->capture_mutex->AcquireSync(0, 3000);
+    wgc_stage_trace::capture("image_mutex_wait_end");
     const auto capture_mutex_wait = std::chrono::steady_clock::now() - capture_mutex_wait_start;
     if (status == WAIT_ABANDONED) {
       BOOST_LOG(error) << "Capture texture keyed mutex was abandoned; continuing with lock held";
@@ -352,7 +359,9 @@ namespace platf::dxgi {
     texture2d_t src;
     uint64_t frame_qpc = 0;
     winrt::com_ptr<ID3D11Texture2D> gpu_tex;
+    wgc_stage_trace::capture("ipc_lock_start");
     capture_status = _ipc_session->lock_frame(gpu_tex, frame_qpc);
+    wgc_stage_trace::capture("ipc_lock_end");
     if (capture_status != capture_e::ok) {
       return capture_status;
     }

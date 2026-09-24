@@ -1,3 +1,4 @@
+#include "../../wgc_stage_trace.h"
 /**
  * @file src/platform/windows/display_base.cpp
  * @brief Definitions for the Windows display base code.
@@ -7,6 +8,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cwchar>
 #include <limits>
 #include <mutex>
@@ -44,6 +46,7 @@ typedef enum _D3DKMT_GPU_PREFERENCE_QUERY_STATE : DWORD {
 #include "src/video.h"
 #include "utf_utils.h"
 #include "wgc_capture_policy.h"
+#include "wgc_event_rate.h"
 
 namespace platf {
   using namespace std::literals;
@@ -417,6 +420,14 @@ namespace platf::dxgi {
     };
 
     DXGI_RATIONAL client_frame_rate_adjusted = adjust_client_frame_rate();
+    const auto event_capture_env = std::getenv("MOONMACHINE_WGC_EVENT_CAPTURE");
+    const bool event_capture = refresh_only_changes_supported && config::video.capture != "wgcc" &&
+                               event_capture_env && std::string_view(event_capture_env) == "1";
+    wgc_policy::event_rate_limit event_rate(client_frame_rate_adjusted.Denominator ?
+      static_cast<double>(client_frame_rate_adjusted.Numerator) / client_frame_rate_adjusted.Denominator : 0.0);
+    if (event_capture) {
+      BOOST_LOG(info) << "WGC event-driven capture enabled (two-frame burst allowance)";
+    }
     std::optional<std::chrono::steady_clock::time_point> frame_pacing_group_start;
     uint32_t frame_pacing_group_frames = 0;
 
@@ -542,6 +553,17 @@ namespace platf::dxgi {
       platf::capture_e status = capture_e::ok;
       std::shared_ptr<img_t> img_out;
 
+      if (event_capture) {
+        wgc_stage_trace::capture("event_snapshot_start");
+        status = snapshot(pull_free_image_cb, img_out, 200ms, *cursor);
+        wgc_stage_trace::capture("event_snapshot_end");
+        if (status == capture_e::ok && img_out && !event_rate.admit(std::chrono::steady_clock::now())) {
+          wgc_stage_trace::capture("event_rate_drop");
+          status = release_snapshot();
+          if (status != capture_e::ok) return status;
+          continue;
+        }
+      } else {
       // Try to continue frame pacing group, snapshot() is called with zero timeout after waiting for client frame interval
       if (frame_pacing_group_start) {
         if (client_frame_rate_adjusted.Numerator == 0) {
@@ -564,11 +586,15 @@ namespace platf::dxgi {
             frame_pacing_group_frames = 0;
             status = capture_e::timeout;
           } else {
+            wgc_stage_trace::capture("pace_sleep_start");
             sleep_until_capture_target(timer.get(), sleep_target);
+            wgc_stage_trace::capture("pace_sleep_end");
             sleep_overshoot_logger.first_point(sleep_target);
             sleep_overshoot_logger.second_point_now_and_log();
 
+            wgc_stage_trace::capture("snapshot_poll_start");
             status = snapshot(pull_free_image_cb, img_out, 0ms, *cursor);
+            wgc_stage_trace::capture("snapshot_poll_end");
 
             if (status == capture_e::ok && img_out) {
               frame_pacing_group_frames += 1;
@@ -584,7 +610,9 @@ namespace platf::dxgi {
 
       // Start new frame pacing group if necessary, snapshot() is called with non-zero timeout
       if (status == capture_e::timeout || (status == capture_e::ok && !frame_pacing_group_start)) {
+        wgc_stage_trace::capture("snapshot_wait_start");
         status = snapshot(pull_free_image_cb, img_out, 200ms, *cursor);
+        wgc_stage_trace::capture("snapshot_wait_end");
 
         if (status == capture_e::ok && img_out) {
           auto raw_anchor = img_out->capture_pacing_timestamp ? img_out->capture_pacing_timestamp : img_out->frame_timestamp;
@@ -656,6 +684,8 @@ namespace platf::dxgi {
           std::this_thread::sleep_for(10ms);
         }
       }
+
+      }  // Legacy timed capture.
 
       switch (status) {
         case platf::capture_e::reinit:

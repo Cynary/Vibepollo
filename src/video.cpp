@@ -3618,7 +3618,9 @@ namespace video {
     std::optional<std::chrono::steady_clock::time_point> capture_timestamp,
     std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp
   ) {
+    const auto diagnostic_encode_start = std::chrono::steady_clock::now();
     auto encoded_frame = session.encode_frame(frame_nr);
+    const auto diagnostic_encode_end = std::chrono::steady_clock::now();
     if (encoded_frame.data.empty()) {
       BOOST_LOG(error) << "NvENC returned empty packet";
       return -1;
@@ -3631,6 +3633,8 @@ namespace video {
     auto packet = std::make_unique<packet_raw_generic>(std::move(encoded_frame.data), encoded_frame.frame_index, encoded_frame.idr);
     packet->channel_data = channel_data;
     packet->after_ref_frame_invalidation = encoded_frame.after_ref_frame_invalidation;
+    packet->diagnostic_encode_start = diagnostic_encode_start;
+    packet->diagnostic_encode_end = diagnostic_encode_end;
     packet->frame_timestamp = frame_timestamp;
     packet->capture_timestamp = capture_timestamp ? capture_timestamp : frame_timestamp;
     packet->host_processing_timestamp = host_processing_timestamp;

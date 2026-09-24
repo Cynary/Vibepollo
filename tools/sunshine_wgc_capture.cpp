@@ -1,3 +1,4 @@
+#include "../src/wgc_stage_trace.h"
 /**
  * @file sunshine_wgc_capture.cpp
  * @brief Windows Graphics Capture helper process for Sunshine.
@@ -1355,6 +1356,7 @@ public:
 
         // Get frame timing information from the WGC frame
         uint64_t frame_qpc = frame.SystemRelativeTime().count();
+        wgc_stage_trace::record(frame_qpc, "callback_frame");
         record_frame_arrival(drained_frames);
         if (admit_activity_frame()) {
           queue_frame_for_delivery(std::move(frame), surface, frame_qpc);
@@ -1756,6 +1758,7 @@ private:
     if (!enqueue_scratch_texture(*scratch_index, frame_qpc)) {
       return;
     }
+    wgc_stage_trace::record(frame_qpc, "queued");
     _delivery_cv.notify_one();
   }
 
@@ -1800,6 +1803,7 @@ private:
       }
 
       try {
+        wgc_stage_trace::record(frame->frame_qpc, "delivery_start");
         copy_frame_to_shared_texture(frame->texture, frame->frame_qpc);
       } catch (const winrt::hresult_error &ex) {
         BOOST_LOG(error) << "WinRT error in WGC delivery thread: " << ex.code() << " - " << winrt::to_string(ex.message());
@@ -1871,6 +1875,7 @@ private:
     // Publish the metadata while still holding the shared keyed mutex so the
     // consumer can never lock a newer texture while reading an older frame id.
     _deps->resource_manager.publish_frame_metadata(frame_qpc);
+    wgc_stage_trace::record(frame_qpc, "published");
 
     const HRESULT rel_hr = _deps->resource_manager.get_keyed_mutex()->ReleaseSync(0);
     release_shared_mutex.disable();
