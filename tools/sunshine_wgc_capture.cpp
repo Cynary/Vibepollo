@@ -2289,6 +2289,14 @@ bool setup_desktop_switch_hook() {
  * @return 0 on successful completion, 1 on initialization failure.
  */
 int main(int argc, char *argv[]) {
+  // The host and helper both record capture stages. Give each helper its own
+  // files so shutdown snapshots cannot overwrite the host's trace.
+  if (const char* trace = std::getenv("MOONMACHINE_HOST_FRAME_TRACE"); trace && *trace) {
+    const auto helper_trace = std::string(trace) + ".helper-" + std::to_string(GetCurrentProcessId());
+    if (_putenv_s("MOONMACHINE_HOST_FRAME_TRACE", helper_trace.c_str()) != 0) {
+      return 1;
+    }
+  }
   // Set up default config and log level
   // Use session-mode logs so rare startup deadlocks don't get overwritten by the next helper run.
   auto log_deinit = logging::init(2, get_temp_log_path());
