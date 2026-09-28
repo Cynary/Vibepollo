@@ -21,14 +21,15 @@ class FramePixelSamples {
     if(!GetTempPathW(32768,directory))throw std::runtime_error("frame validation directory");
     auto path=std::filesystem::path(directory)/(L"ce-final-pixels-"+std::to_wstring(GetCurrentProcessId())+L".csv");
     csv.open(path);if(!csv)throw std::runtime_error("frame validation output");
-    csv<<"frame,source_qpc,observed_qpc,flags,format,width,height,hash,changed_bytes\n";
+    csv<<"frame,source_qpc,observed_qpc,flags,format,width,height,hash,changed_bytes,bright_center_x,bright_pixels\n";
     remaining=count;
   }
   void capture(ID3D11Device* device,ID3D11DeviceContext* context,ID3D11Texture2D* source,const FrameSlot& slot) {
     if(!remaining || !(slot.captureFlags&SHARED_FRAME_CAPTURE_FINAL_PRESENTED_OUTPUT))return;
     D3D11_TEXTURE2D_DESC desc{};source->GetDesc(&desc);
     const unsigned pixelBytes=desc.Format==DXGI_FORMAT_R16G16B16A16_FLOAT?8:4;
-    const unsigned width=std::min(256u,desc.Width),height=std::min(256u,desc.Height);
+    // A full-width centre scanline sees a moving object across the image.
+    const unsigned width=desc.Width,height=1;
     if(!staging || stagingDesc.Format!=desc.Format || stagingDesc.Width!=width || stagingDesc.Height!=height) {
       staging.Reset();previous.clear();stagingDesc=desc;
       stagingDesc.Width=width;stagingDesc.Height=height;stagingDesc.BindFlags=0;
@@ -47,8 +48,16 @@ class FramePixelSamples {
     context->Unmap(staging.Get(),0);
     uint64_t hash=14695981039346656037ull;unsigned changed=0;
     for(size_t i=0;i<pixels.size();i++){hash=(hash^pixels[i])*1099511628211ull;if(previous.size()==pixels.size() && pixels[i]!=previous[i])changed++;}
+    double center=-1;unsigned bright=0;uint64_t sumX=0;
+    if(desc.Format==DXGI_FORMAT_R8G8B8A8_UNORM || desc.Format==DXGI_FORMAT_R8G8B8A8_UNORM_SRGB) {
+      for(unsigned column=0;column<width;column++) {
+        const auto* rgb=pixels.data()+column*4;
+        if(rgb[0]>200 && rgb[1]>200 && rgb[2]>200){sumX+=column;bright++;}
+      }
+      if(bright)center=double(sumX)/bright;
+    }
     LARGE_INTEGER now;QueryPerformanceCounter(&now);
-    csv<<slot.frameIndex<<','<<slot.timestamp<<','<<now.QuadPart<<','<<slot.captureFlags<<','<<desc.Format<<','<<desc.Width<<','<<desc.Height<<','<<hash<<','<<changed<<'\n';
+    csv<<slot.frameIndex<<','<<slot.timestamp<<','<<now.QuadPart<<','<<slot.captureFlags<<','<<desc.Format<<','<<desc.Width<<','<<desc.Height<<','<<hash<<','<<changed<<','<<center<<','<<bright<<'\n';
     previous=std::move(pixels);
     if(--remaining==0)csv.flush();
   }
