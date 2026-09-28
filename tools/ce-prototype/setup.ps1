@@ -4,6 +4,7 @@ param(
     [string]$TargetPath,
     [string]$HookPath,
     [string]$HelperPath,
+    [string]$HostPath,
     [string]$LauncherPath,
     [string]$InstallDirectory = "$env:ProgramFiles\Apollo",
     [string]$ApplicationName = 'MoonDeckStream',
@@ -13,6 +14,7 @@ $ErrorActionPreference = 'Stop'
 $stateFile = Join-Path $StateDirectory 'state.json'
 $appsFile = Join-Path $InstallDirectory 'config\apps.json'
 $installedHelper = Join-Path $InstallDirectory 'tools\sunshine_wgc_capture.exe'
+$installedHost = Join-Path $InstallDirectory 'sunshine.exe'
 $variables = @('MOONMACHINE_CE_TARGET_PATH','MOONMACHINE_CE_HOOK',
     'MOONMACHINE_CE_TARGET_PID','MOONMACHINE_CE_VALIDATE_FINAL_OUTPUT')
 function Write-JsonFile($Path, $Value) {
@@ -58,27 +60,39 @@ if ($Mode -eq 'Disable') {
     if ((Get-FileHash "$StateDirectory\original-helper.exe").Hash -ne $state.OriginalHelperHash) {
         throw 'The saved helper failed its integrity check.'
     }
+    if ($state.Version -ge 2) {
+        $currentHostHash = (Get-FileHash $installedHost).Hash
+        if ($currentHostHash -ne $state.EnabledHostHash -and $currentHostHash -ne $state.OriginalHostHash) {
+            throw 'The host executable changed after setup. Refusing to overwrite a newer installation.'
+        }
+        if ((Get-FileHash "$StateDirectory\original-host.exe").Hash -ne $state.OriginalHostHash) {
+            throw 'The saved host failed its integrity check.'
+        }
+    }
     Stop-Service ApolloService
     try {
+        if ($state.Version -ge 2) { Copy-Item "$StateDirectory\original-host.exe" $installedHost -Force }
         Copy-Item "$StateDirectory\original-helper.exe" $installedHelper -Force
         $app.cmd = $state.OriginalCommand
         Write-JsonFile $appsFile $apps
         Restore-Environment $state.Environment
         Remove-Item $stateFile
     } finally { if ($serviceWasRunning) { Start-Service ApolloService } }
-    'Original capture helper, application command and environment restored.'
+    'Original capture binaries, application command and environment restored.'
     return
 }
 if (Test-Path $stateFile) { throw 'A saved setup already exists. Disable it before selecting another game.' }
-foreach ($value in @($TargetPath,$HookPath,$HelperPath,$LauncherPath)) {
+foreach ($value in @($TargetPath,$HookPath,$HelperPath,$HostPath,$LauncherPath)) {
     if (!$value -or !(Test-Path -LiteralPath $value -PathType Leaf)) {
-        throw 'Enable requires existing TargetPath, HookPath, HelperPath and LauncherPath files.'
+        throw 'Enable requires existing TargetPath, HookPath, HelperPath, HostPath and LauncherPath files.'
     }
 }
 $TargetPath = (Resolve-Path -LiteralPath $TargetPath).Path
 $HookPath = (Resolve-Path -LiteralPath $HookPath).Path
 $HelperPath = (Resolve-Path -LiteralPath $HelperPath).Path
+$HostPath = (Resolve-Path -LiteralPath $HostPath).Path
 $LauncherPath = (Resolve-Path -LiteralPath $LauncherPath).Path
+if ($HostPath -eq $installedHost) { throw 'Use a separate candidate host, not the installed host.' }
 if ($HelperPath -eq $installedHelper) { throw 'Use a separate candidate helper, not the installed helper.' }
 $apps = Get-Content $appsFile -Raw | ConvertFrom-Json
 $app = Find-App $apps $ApplicationName
@@ -87,20 +101,24 @@ if (!$app.cmd -or $app.cmd.Contains('ce-stream-launcher.exe')) {
 }
 New-Item $StateDirectory -ItemType Directory -Force | Out-Null
 Copy-Item $installedHelper "$StateDirectory\original-helper.exe" -Force
+Copy-Item $installedHost "$StateDirectory\original-host.exe" -Force
 $environment = @{}
 foreach ($name in $variables) { $environment[$name] = [Environment]::GetEnvironmentVariable($name,'User') }
 $state = [ordered]@{
-    Version = 1; Enabled = $true; TargetPath = $TargetPath
+    Version = 2; Enabled = $true; TargetPath = $TargetPath
     InstallDirectory = $InstallDirectory; ApplicationName = $ApplicationName
     OriginalCommand = $app.cmd; EnabledCommand = '"' + $LauncherPath + '" ' + $app.cmd
     OriginalHelperHash = (Get-FileHash $installedHelper).Hash
     EnabledHelperHash = (Get-FileHash $HelperPath).Hash
+    OriginalHostHash = (Get-FileHash $installedHost).Hash
+    EnabledHostHash = (Get-FileHash $HostPath).Hash
     Environment = $environment
 }
 # Save recovery information before changing the installed files.
 Write-JsonFile $stateFile $state
 Stop-Service ApolloService
 try {
+    Copy-Item $HostPath $installedHost -Force
     Copy-Item $HelperPath $installedHelper -Force
     $app.cmd = $state.EnabledCommand
     Write-JsonFile $appsFile $apps
@@ -109,6 +127,7 @@ try {
     [Environment]::SetEnvironmentVariable('MOONMACHINE_CE_TARGET_PID',$null,'User')
     [Environment]::SetEnvironmentVariable('MOONMACHINE_CE_VALIDATE_FINAL_OUTPUT',$null,'User')
 } catch {
+    Copy-Item "$StateDirectory\original-host.exe" $installedHost -Force
     Copy-Item "$StateDirectory\original-helper.exe" $installedHelper -Force
     $app.cmd = $state.OriginalCommand
     Write-JsonFile $appsFile $apps

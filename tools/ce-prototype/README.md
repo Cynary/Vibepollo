@@ -8,13 +8,14 @@ It is experimental and disabled by default.
 ## Enable or restore the prototype
 
 Close any stream first. In an elevated PowerShell window running as the Windows
-streaming user, run the setup script with the built helper, launcher, matching
+streaming user, run the setup script with the built host, helper, launcher, matching
 ABI 63 hook, and the game's actual executable:
 
 ```powershell
 .\setup.ps1 -Mode Enable `
   -TargetPath 'D:\Games\Example\Game.exe' `
   -HelperPath 'C:\DirectCapture\sunshine_wgc_capture-ce.exe' `
+  -HostPath 'C:\DirectCapture\sunshine.exe' `
   -LauncherPath 'C:\DirectCapture\ce-stream-launcher.exe' `
   -HookPath 'C:\DirectCapture\capture_hook_x64.dll'
 ```
@@ -24,7 +25,7 @@ The default installation is `C:\Program Files\Apollo`, and the application is
 Keep the launcher and matching hook files at those paths while enabled. For
 32-bit games, keep the matching 32-bit hook beside the 64-bit hook.
 
-The script backs up the installed helper, prefixes the existing application
+The script backs up the installed host and helper, prefixes the existing application
 command with the readiness launcher, and saves the environment values it changes.
 It restarts ApolloService, so an active stream would be interrupted. Launch the
 selected game through MoonDeck after setup; an already-running unhooked game
@@ -35,8 +36,8 @@ must be closed and relaunched.
 .\setup.ps1 -Mode Disable
 ```
 
-Disable restores the helper, original application command, and environment.
-It preserves unrelated application edits and refuses to overwrite a helper or
+Disable restores both binaries, the original application command, and environment.
+It preserves unrelated application edits and refuses to overwrite a host, helper or
 launch command changed since setup. Recovery files are kept under
 `%LOCALAPPDATA%\Moonmachine\DirectCapture`; do not delete them while enabled.
 This command does not install a matching hook build or change Windows services'
@@ -341,3 +342,17 @@ survived encoding; the controlled moving-pattern test above checks interpolation
 Exiting the game returned the same stream to desktop capture. Disabling the
 prototype restored the original helper and launch command. These recording runs
 are correctness checks, not latency benchmarks.
+
+## Disconnect and reconnect
+
+Use the matching host build as well as the helper. The host closes the helper’s
+control pipe and lets it exit before releasing shared GPU resources. It kills the
+helper only if the bounded shutdown wait expires. An older host immediately
+kills the helper, which produced shared-fence removal errors in testing.
+
+The matching hook also keeps capture-resource destruction on the render thread
+for games with a single-threaded D3D11 device. Overcooked 2 exposed the previous
+background-release race: reconnect froze after 14–15 frames. The corrected build
+passed three reconnects of the same game process, followed by input-driven exit
+and return to desktop capture without closing the stream. Final package
+verification is still in progress.

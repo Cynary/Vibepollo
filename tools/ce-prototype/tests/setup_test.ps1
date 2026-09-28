@@ -20,13 +20,14 @@ $root=Join-Path $env:TEMP ('ce-setup-test-'+[Guid]::NewGuid().ToString('N'))
 try{
     New-Item "$root\install\tools","$root\install\config" -ItemType Directory -Force | Out-Null
     [IO.File]::WriteAllText("$root\install\tools\sunshine_wgc_capture.exe",'original-helper')
-    foreach($name in @('target.exe','hook.dll','candidate.exe','ce-stream-launcher.exe')){[IO.File]::WriteAllText("$root\$name",$name)}
+    [IO.File]::WriteAllText("$root\install\sunshine.exe",'original-host')
+    foreach($name in @('target.exe','hook.dll','candidate.exe','candidate-host.exe','ce-stream-launcher.exe')){[IO.File]::WriteAllText("$root\$name",$name)}
     $cmd='"C:\Program Files\Buddy\MoonDeckStream.exe" --unchanged "argument with spaces"'
     $doc=@{apps=@(@{name='MoonDeckStream';cmd=$cmd},@{name='Other';cmd='original-other'});env=@{keep='value'}}
     $appFile="$root\install\config\apps.json"
     $doc|ConvertTo-Json -Depth 20|Set-Content $appFile
     $setupOptions=@{InstallDirectory="$root\install";StateDirectory="$root\state"}
-    $enable=@{TargetPath="$root\target.exe";HookPath="$root\hook.dll";HelperPath="$root\candidate.exe";LauncherPath="$root\ce-stream-launcher.exe"}
+    $enable=@{TargetPath="$root\target.exe";HookPath="$root\hook.dll";HelperPath="$root\candidate.exe";HostPath="$root\candidate-host.exe";LauncherPath="$root\ce-stream-launcher.exe"}
     & $SetupScript -Mode Enable @setupOptions @enable | Out-Null
     Assert $script:serviceRunning 'Enable left service stopped'
     $live=Get-Content $appFile -Raw|ConvertFrom-Json
@@ -41,7 +42,11 @@ try{
     [IO.File]::WriteAllText("$root\install\tools\sunshine_wgc_capture.exe",'updated-by-someone-else')
     Expect-Failure {& $SetupScript -Mode Disable @setupOptions} '*helper changed*'
     Copy-Item "$root\candidate.exe" "$root\install\tools\sunshine_wgc_capture.exe" -Force
+    [IO.File]::WriteAllText("$root\install\sunshine.exe",'updated-host')
+    Expect-Failure {& $SetupScript -Mode Disable @setupOptions} '*host executable changed*'
+    Copy-Item "$root\candidate-host.exe" "$root\install\sunshine.exe" -Force
     & $SetupScript -Mode Disable @setupOptions | Out-Null
+    Assert ([IO.File]::ReadAllText("$root\install\sunshine.exe") -eq 'original-host') 'Host not restored'
     $restored=Get-Content $appFile -Raw|ConvertFrom-Json
     Assert ($restored.apps[0].cmd -eq $cmd) 'Original command not restored'
     Assert ($restored.apps[1].cmd -eq 'new-unrelated-command') 'Unrelated edit lost'

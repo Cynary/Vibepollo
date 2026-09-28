@@ -524,6 +524,37 @@ TEST(SunshineWgcCapture, HelperStartupAndStopAreBounded) {
   EXPECT_EQ(platf::dxgi::wgc_policy::helper_stop_timeout_ms, 3000u);
 }
 
+TEST(SunshineWgcCapture, GracefulStopNeverTerminatesTheHelper) {
+  std::string calls;
+  EXPECT_TRUE(platf::dxgi::wgc_policy::stop_helper(
+    [&] { calls += 'S'; },
+    [&](std::uint32_t timeout) {
+      EXPECT_EQ(timeout, 3000u);
+      calls += 'W';
+      return true;
+    },
+    [&] { calls += 'K'; }
+  ));
+  EXPECT_EQ(calls, "SW");
+}
+
+TEST(SunshineWgcCapture, UnresponsiveHelperHasBoundedForcedCleanup) {
+  for (const bool exits_after_kill : {false, true}) {
+    std::string calls;
+    int waits = 0;
+    EXPECT_EQ(platf::dxgi::wgc_policy::stop_helper(
+      [&] { calls += 'S'; },
+      [&](std::uint32_t timeout) {
+        EXPECT_EQ(timeout, 3000u);
+        calls += 'W';
+        return ++waits == 2 && exits_after_kill;
+      },
+      [&] { calls += 'K'; }
+    ), exits_after_kill);
+    EXPECT_EQ(calls, "SWKW");
+  }
+}
+
 TEST(SunshineWgcCapture, FramePoolStartsLowLatencyAndCanAdapt) {
   using namespace platf::dxgi::wgc_policy;
   EXPECT_EQ(low_latency_initial_buffer_size, 1u);
