@@ -5,6 +5,56 @@ same Vibepollo stream connected. It uses CaptureEngine v0.1.6772's MIT-licensed
 hook and shared-memory interface, with the ABI 63 changes described below.
 It is experimental and disabled by default.
 
+## Enable or restore the prototype
+
+Close any stream first. In an elevated PowerShell window running as the Windows
+streaming user, run the setup script with the built helper, launcher, matching
+ABI 63 hook, and the game's actual executable:
+
+```powershell
+.\setup.ps1 -Mode Enable `
+  -TargetPath 'D:\Games\Example\Game.exe' `
+  -HelperPath 'C:\DirectCapture\sunshine_wgc_capture-ce.exe' `
+  -LauncherPath 'C:\DirectCapture\ce-stream-launcher.exe' `
+  -HookPath 'C:\DirectCapture\capture_hook_x64.dll'
+```
+
+The default installation is `C:\Program Files\Apollo`, and the application is
+`MoonDeckStream`. Use `-InstallDirectory` or `-ApplicationName` if yours differs.
+Keep the launcher and matching hook files at those paths while enabled. For
+32-bit games, keep the matching 32-bit hook beside the 64-bit hook.
+
+The script backs up the installed helper, prefixes the existing application
+command with the readiness launcher, and saves the environment values it changes.
+It restarts ApolloService, so an active stream would be interrupted. Launch the
+selected game through MoonDeck after setup; an already-running unhooked game
+must be closed and relaunched.
+
+```powershell
+.\setup.ps1 -Mode Status
+.\setup.ps1 -Mode Disable
+```
+
+Disable restores the helper, original application command, and environment.
+It preserves unrelated application edits and refuses to overwrite a helper or
+launch command changed since setup. Recovery files are kept under
+`%LOCALAPPDATA%\Moonmachine\DirectCapture`; do not delete them while enabled.
+This command does not install a matching hook build or change Windows services'
+startup settings.
+
+The fixture regression checks restoration and conflict handling without
+controlling the real service. Run it with streaming closed because it briefly
+changes, then restores, the current user's prototype environment values:
+
+```powershell
+.\tests\setup_test.ps1 -SetupScript .\setup.ps1
+```
+
+The fixture regression and a real enable → MoonDeck launch → 4K HDR capture →
+game exit → disable cycle passed on Windows.
+
+## Manual configuration
+
 Set `MOONMACHINE_CE_TARGET_PATH` to the full path of the game's executable and
 `MOONMACHINE_CE_HOOK` to `capture_hook_x64.dll` before the capture helper starts.
 These are helper environment variables, not configuration-file options. Start the
