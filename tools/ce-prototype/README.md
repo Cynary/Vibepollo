@@ -326,3 +326,18 @@ Each row covers about two minutes after warmup, with 4K HDR and FG off. These
 results identify the large spikes observed in this test; they do not explain
 every source of streaming jitter. The service's original configuration was
 restored afterward. The prototype does not change Windows services.
+
+### HDR gameplay through the client decoder
+
+The updated hook was also tested through the complete bridge with Stellar Blade
+in a loaded scene, HDR enabled and DLSS Frame Generation set to 2x. After
+disconnecting and reconnecting, the helper resumed direct final-output capture.
+The video received by Moonlight was HEVC at 3840×2160, `yuv444p10le`, limited
+range, PQ/BT.2020. The first 240 decoded frames had no decoding errors or
+adjacent identical image hashes, and a decoded preview showed the expected
+scene. Unique hashes establish changing video, not that every generated frame
+survived encoding; the controlled moving-pattern test above checks interpolation.
+
+Exiting the game returned the same stream to desktop capture. Disabling the
+prototype restored the original helper and launch command. These recording runs
+are correctness checks, not latency benchmarks.
