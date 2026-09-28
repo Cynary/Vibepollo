@@ -212,3 +212,27 @@ g++ -std=c++20 -O2 -static tests/rolling_trace_test.cpp -o rolling-trace-test.ex
 
 It passed on Windows and Linux. The two headers are byte-identical to those used
 by the Windows helper in the matched capture and subsequent transition tests.
+
+With `MOONMACHINE_CE_TRACE_TIMING=1`, bridge checkpoints also appear in the rolling
+helper stage CSV. Their names begin with `ce_bridge_`. For these rows,
+`callback_id` holds the producer's raw source QPC to join against the CE timing
+CSV; `steady_us` is the measured checkpoint time. `source_100ns` is zero. The
+checkpoints distinguish output-lock acquisition, shader setup/command recording,
+GPU submission and completion wait, metadata publication, unlock and notification.
+Do not subtract the raw source key from a checkpoint time: Frame Generation may
+use a future presentation schedule for that key.
+
+### Loaded-scene check
+
+Stellar Blade ran unpaused in a loaded 4K HDR scene with Frame Generation off,
+then DLSS 2x, and exited normally. Each matched steady sample covered about
+51 seconds at 116 streamed FPS, with no client drops recorded. Outgoing frame
+spacing P99 was 9.43 ms without FG and 9.14 ms with it. The off sample included
+one 44.95 ms gap, localized to a 35.67 ms bridge conversion/publication interval;
+its exact operation needs the finer checkpoints above.
+
+Measured capture-to-publication averaged 2.43 ms without FG (P99 6.12 ms), versus
+0.59 ms with FG (P99 0.74 ms). The callbacks occur at different rendering stages
+and GPU utilization differed (94% and 70% spot readings), so these numbers do
+not isolate FG's cost or prove a speedup over desktop capture. This was a loaded
+scene with a stationary character, not a combat or controller-play test.

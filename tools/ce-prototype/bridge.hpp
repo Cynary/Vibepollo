@@ -5,11 +5,16 @@
 #include <d3dcompiler.h>
 #include "colour_shader.hpp"
 #include "colour_view.hpp"
+#include "../../src/wgc_stage_trace.h"
 
 class CeOutput {
   SharedResourceManager ownedResources;
   SharedResourceManager& resources;
   bool externalResources=false;
+  const bool stageTracing=[] {
+    const char* enabled=std::getenv("MOONMACHINE_CE_TRACE_TIMING");
+    return enabled && std::string_view(enabled)=="1";
+  }();
   ComPtr<ID3D11VertexShader> vs;
   ComPtr<ID3D11PixelShader> ps, sdrPs, linearPs, encodeSdrPs;
   ComPtr<ID3D11RenderTargetView> rtv;
@@ -26,6 +31,11 @@ class CeOutput {
   explicit CeOutput(SharedResourceManager& existing):resources(existing),externalResources(true){}
   bool publish(ID3D11Device* device,ID3D11DeviceContext* context,ID3D11Texture2D* source,
                bool hdr,int64_t timestamp,AsyncNamedPipe& pipe) {
+    // Keep the raw producer QPC in callback_id so all bridge checkpoints can
+    // be joined to the CE timing CSV without treating a scheduled FG timestamp
+    // as a measurement. The recorder's steady_us measures checkpoint time.
+    auto trace=[&](const char* stage){if(stageTracing)wgc_stage_trace::record(0,stage,timestamp);};
+    trace("ce_bridge_enter");
     if(!pipe.is_connected()) return false;
     D3D11_TEXTURE2D_DESC desc;source->GetDesc(&desc);
     const bool pq=hdr && desc.Format==DXGI_FORMAT_R10G10B10A2_UNORM;
@@ -76,11 +86,15 @@ class CeOutput {
       BOOST_LOG(info)<<"CaptureEngine colour transition: HDR="<<hdr<<" format="<<desc.Format;
       initialHdr=hdr;
     }
+    trace("ce_bridge_setup_done");
     auto mutex=resources.get_keyed_mutex();
+    trace("ce_bridge_lock_begin");
     if(mutex->AcquireSync(0,1000)!=S_OK) throw std::runtime_error("output texture busy/abandoned");
+    trace("ce_bridge_lock_end");
     auto release=util::fail_guard([&]{mutex->ReleaseSync(0);});
     if(desc.Width!=outputDesc.Width || desc.Height!=outputDesc.Height || desc.Format!=outputDesc.Format || (outputLinear && desc.Format!=DXGI_FORMAT_R16G16B16A16_FLOAT)) {
       ComPtr<ID3D11ShaderResourceView>srv;check(device->CreateShaderResourceView(source,nullptr,&srv),"capture SRV");
+      trace("ce_bridge_srv_ready");
       auto input=srv.Get();auto target=rtv.Get();
       context->IASetInputLayout(nullptr);context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
       context->VSSetShader(vs.Get(),nullptr,0);
@@ -99,13 +113,23 @@ class CeOutput {
       context->Draw(3,0);
       input=nullptr;context->PSSetShaderResources(0,1,&input);context->OMSetRenderTargets(0,nullptr,nullptr);
     } else context->CopyResource(resources.get_shared_texture().get(),source);
+    trace("ce_bridge_commands_recorded");
     // Acknowledge producer ownership only after our GPU read finishes. This
     // conservative prototype wait can later become an asynchronous lease.
-    check(ctx4->Signal(complete.Get(),++serial),"completion signal");context->Flush();
+    check(ctx4->Signal(complete.Get(),++serial),"completion signal");
+    trace("ce_bridge_signal_done");
+    context->Flush();
+    trace("ce_bridge_flush_done");
     check(complete->SetEventOnCompletion(serial,done.v),"completion event");
+    trace("ce_bridge_wait_begin");
     if(WaitForSingleObject(done.v,2000)!=WAIT_OBJECT_0)throw std::runtime_error("bridge GPU timeout");
+    trace("ce_bridge_wait_end");
     resources.publish_frame_metadata(timestamp);
-    release.disable();check(mutex->ReleaseSync(0),"output release");resources.signal_frame_ready();
+    trace("ce_bridge_metadata_done");
+    release.disable();check(mutex->ReleaseSync(0),"output release");
+    trace("ce_bridge_unlock_done");
+    resources.signal_frame_ready();
+    trace("ce_bridge_notify_done");
     return pipe.is_connected();
   }
 };
