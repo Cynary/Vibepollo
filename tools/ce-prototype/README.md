@@ -91,8 +91,9 @@ for other games, anti-cheat systems, drivers, or frame-generation implementation
 
 - Replace 10 ms process discovery polling with a reliable launch/injection
   lifecycle. Polling does not guarantee injection precedes device creation.
-- Investigate the intermittent preserved-swapchain resize assertion; subsequent
-  successful launches do not prove it is fixed.
+- Broaden startup/resize validation beyond the tested games. The matching hook
+  now retains its frame-processing lock and releases tracked DX12 resources
+  before a preserved-swapchain resize; repeated Stellar Blade launches passed.
 - Validate controller gameplay and generated-frame completeness through the client.
 - Expand HDR validation beyond static colour patches and measure latency under gameplay.
 - Improve resize scaling, which currently uses point sampling with letterboxing.
@@ -156,9 +157,11 @@ mean/p99 was 0.560/0.662 ms, while the presentation schedule led the callback by
 33.6 ms. These timings exclude encoding, network and client work. This is a
 measurement check, not a gameplay latency benchmark. Matching hook source commit:
 `0ed5952`, on the v0.1.6772-derived tree. The later `dbb5e79` fix keeps
-the frame-processing mutex owned through capture and drawing; HDR startup and
-DLSS 2x on/off transitions passed in Stellar Blade with it. The intermittent
-resize failure still needs repeated validation.
+the frame-processing mutex owned through capture and drawing. Commit `7518a74`
+also preserves the tracked-resource cleanup around swapchain resize. Three
+fresh HDR launches and DLSS 2x on/off transitions passed in Stellar Blade;
+two repeated startup logs confirmed that the resize cleanup ran. These checks
+cover the reproduced failure, not every game's resize lifecycle.
 
 ### Generated-image validation
 
@@ -228,11 +231,36 @@ Stellar Blade ran unpaused in a loaded 4K HDR scene with Frame Generation off,
 then DLSS 2x, and exited normally. Each matched steady sample covered about
 51 seconds at 116 streamed FPS, with no client drops recorded. Outgoing frame
 spacing P99 was 9.43 ms without FG and 9.14 ms with it. The off sample included
-one 44.95 ms gap, localized to a 35.67 ms bridge conversion/publication interval;
-its exact operation needs the finer checkpoints above.
+one 44.95 ms gap, localized to a 35.67 ms bridge conversion/publication interval.
+The finer checkpoints subsequently located that stall in acquisition of the
+shared output texture, rather than the colour-conversion shader.
 
 Measured capture-to-publication averaged 2.43 ms without FG (P99 6.12 ms), versus
 0.59 ms with FG (P99 0.74 ms). The callbacks occur at different rendering stages
 and GPU utilization differed (94% and 70% spot readings), so these numbers do
 not isolate FG's cost or prove a speedup over desktop capture. This was a loaded
 scene with a stationary character, not a combat or controller-play test.
+
+### Rare handoff stalls
+
+The shared-texture acquisition occasionally took 35–42 ms even though the
+conversion itself completed in roughly 0.16 ms. Adding an explicit D3D11
+`Flush()` after the host released the texture did not help; that experiment
+is not part of the bridge.
+
+A Windows GPU/scheduler trace caught the helper, game, compositor and encoder
+blocked at the same time while GraphicsPerfSvc enumerated graphics state.
+The helper was scheduled within 7 microseconds once its wait ended. In a
+same-scene comparison, temporarily disabling that service removed the large
+wait; restoring it brought the wait back:
+
+| GraphicsPerfSvc | Frames measured | Acquisition P99 | Largest acquisition wait | Largest whole-bridge interval |
+| --- | ---: | ---: | ---: | ---: |
+| Enabled | 13,951 | 0.058 ms | 36.216 ms | 36.503 ms |
+| Disabled for the test | 13,834 | 0.057 ms | 0.284 ms | 0.595 ms |
+| Restored | 13,925 | 0.057 ms | 35.927 ms | 36.269 ms |
+
+Each row covers about two minutes after warmup, with 4K HDR and FG off. These
+results identify the large spikes observed in this test; they do not explain
+every source of streaming jitter. The service's original configuration was
+restored afterward. The prototype does not change Windows services.
