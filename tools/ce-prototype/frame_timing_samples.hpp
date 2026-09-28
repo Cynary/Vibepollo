@@ -10,7 +10,7 @@
 class FrameTimingSamples {
   struct Sample {
     uint32_t frame, flags, pending, format;
-    int64_t source, observed, ready, published;
+    int64_t source, captureObserved, observed, ready, published;
   };
   static constexpr size_t capacity = 65536;
   std::unique_ptr<std::array<Sample, capacity>> samples;
@@ -29,19 +29,19 @@ class FrameTimingSamples {
   void record(const FrameSlot& slot,uint32_t pending,uint32_t format,
               int64_t observed,int64_t ready,int64_t published) {
     if(samples)(*samples)[written++%capacity]={slot.frameIndex,slot.captureFlags,pending,format,
-                                             slot.timestamp,observed,ready,published};
+                                             slot.timestamp,slot.captureObservedQpc,observed,ready,published};
   }
   ~FrameTimingSamples() noexcept {
     if(!samples)return;
     try {
       std::ofstream csv(path);
       LARGE_INTEGER frequency;QueryPerformanceFrequency(&frequency);
-      csv<<"frame,flags,pending,format,source_qpc,observed_qpc,ready_qpc,published_qpc,qpc_frequency\n";
+      csv<<"frame,flags,pending,format,source_qpc,capture_observed_qpc,observed_qpc,ready_qpc,published_qpc,qpc_frequency\n";
       const size_t first=written>capacity?written-capacity:0;
       for(size_t i=first;i<written;i++) {
         const auto& s=(*samples)[i%capacity];
         csv<<s.frame<<','<<s.flags<<','<<s.pending<<','<<s.format<<','<<s.source<<','
-           <<s.observed<<','<<s.ready<<','<<s.published<<','<<frequency.QuadPart<<'\n';
+           <<s.captureObserved<<','<<s.observed<<','<<s.ready<<','<<s.published<<','<<frequency.QuadPart<<'\n';
       }
       csv.close();
       if(!csv)fprintf(stderr,"CE timing trace write failed\n");

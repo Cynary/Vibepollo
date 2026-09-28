@@ -117,3 +117,24 @@ generation capture. Recording and readback runs are excluded from benchmarks.
 
 Both fixture runs completed their SDR-to-HDR resize and returned to desktop
 capture on the existing stream. These runs used the helper built from `397b2b4`.
+
+### Measured capture clock
+
+The matched hook/helper builds use shared-memory ABI 63. `captureObservedQpc`
+is separate from the recording presentation schedule: DX12 and Vulkan generated
+outputs carry the QPC sampled in their final-output callback. Ordinary capture
+paths retain their existing measured capture time. A generated output without
+that measurement reports zero, not an invented capture time.
+
+The helper timing CSV includes `capture_observed_qpc` alongside `source_qpc`
+(the original presentation schedule), observed, ready and published times.
+This instrumentation does not change the timestamps sent to the client or the
+frame admission policy. Do not mix these headers with the unmodified release
+hook; the versioned mapping names and signature intentionally reject that mix.
+
+The ABI 63 live check captured 11,410 frames with no missing measured timestamps
+or clock-order violations. In the steady 2× FG menu portion, callback-to-publish
+mean/p99 was 0.560/0.662 ms, while the presentation schedule led the callback by
+33.6 ms. These timings exclude encoding, network and client work. This is a
+measurement check, not a gameplay latency benchmark. Matching hook source commit:
+`0ed5952`, on the v0.1.6772-derived tree.
