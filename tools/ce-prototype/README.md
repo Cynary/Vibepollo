@@ -363,5 +363,7 @@ build with HDR and DLSS 2x: reconnect resumed final-output capture, the received
 video decoded as 4K 10-bit 4:4:4 PQ/BT.2020, and 240 decoded frames had no
 adjacent duplicate hashes. Normal game exit returned to desktop capture. Setup
 v2 then restored both original binaries, verified by their SHA-256 hashes.
-The three Overcooked reconnects used build 0.1.30; the final 0.1.31 verification
-rebuild included a comment correction and no additional functional change.
+The exact packaged 0.1.31 hook also passed an initial Overcooked capture and
+three reconnects of the same game process, with at least 1,200 frames per session.
+An initial test launched before helper readiness and correctly stayed on desktop
+capture; that run was excluded and repeated after correcting the test sequence.
