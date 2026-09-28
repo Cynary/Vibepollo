@@ -153,3 +153,21 @@ The optional pixel diagnostic now samples a full-width centre scanline instead
 of a centre crop. Its CSV includes bright-pixel position/count for RGBA8 sources;
 other formats retain hashes and report position -1. It remains synchronous,
 bounded to the requested sample count, and unsuitable for latency measurements.
+
+#### Matched frame-generation capture comparison
+
+A 4K DLSS 2x moving-scene fixture was run through normal desktop capture and
+this bridge with the same workload and no pixel readback. Across two focused
+runs, the 99th-percentile gap between outgoing frames was about 10.8 ms for
+normal capture and 9.2 ms for direct capture, at 116 streamed frames per second.
+Encoding averaged about 4.4 ms in both paths. The direct hook's measured
+callback-to-publish interval averaged 0.52 ms (p99 0.67 ms).
+
+This is a controlled fixture result, not evidence that demanding game workloads
+have the same improvement. Client timing varied between repeats; it does not
+yet establish an end-to-end latency reduction. Generated-frame scheduling
+timestamps and measured callback times remain separate in the trace.
+
+Helper stage traces use a process-specific filename so the host and helper do
+not overwrite each other's snapshots. Request the helper snapshot before
+ending the stream when investigating shutdown failures.
