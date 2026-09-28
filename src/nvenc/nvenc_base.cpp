@@ -1,3 +1,4 @@
+#include "submission_trace.h"
 /**
  * @file src/nvenc/nvenc_base.cpp
  * @brief Definitions for abstract platform-agnostic base of standalone NVENC encoder.
@@ -1035,6 +1036,7 @@ namespace nvenc {
     }
 #endif
 
+    const auto diagnostic_submit = std::chrono::steady_clock::now();
     if (nvenc_failed(nvenc->nvEncEncodePicture(encoder, &pic_params))) {
       BOOST_LOG(error) << "NvEnc: NvEncEncodePicture() failed: " << last_nvenc_error_string;
       return {};
@@ -1053,6 +1055,9 @@ namespace nvenc {
       BOOST_LOG(error) << "NvEnc: NvEncLockBitstream() failed: " << last_nvenc_error_string;
       return {};
     }
+
+    static thread_local submission_trace::recorder submit_trace;
+    submit_trace.add(frame_index, encode_started, diagnostic_submit, std::chrono::steady_clock::now());
 
     auto data_pointer = (uint8_t *) lock_bitstream.bitstreamBufferPtr;
     nvenc_encoded_frame encoded_frame {
