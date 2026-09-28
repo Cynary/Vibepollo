@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WindowsPerformanceRecorder Version="1.0" Author="Moonmachine">
+<Profiles>
+<SystemCollector Id="System" Name="Moonmachine Host Scheduler"><BufferSize Value="256"/><Buffers Value="512"/></SystemCollector>
+<EventCollector Id="Graphics" Name="Moonmachine Host Graphics"><BufferSize Value="256"/><Buffers Value="1024"/></EventCollector>
+<SystemProvider Id="Scheduler"><Keywords><Keyword Value="ProcessThread"/><Keyword Value="Loader"/><Keyword Value="CSwitch"/><Keyword Value="ReadyThread"/><Keyword Value="DPC"/><Keyword Value="Interrupt"/></Keywords><Stacks><Stack Value="CSwitch"/><Stack Value="ReadyThread"/></Stacks></SystemProvider>
+<EventProvider Id="DxgKrnl" Name="Microsoft-Windows-DxgKrnl" Level="5" NonPagedMemory="true"><Keywords><Keyword Value="0x0C09C277"/></Keywords></EventProvider>
+<EventProvider Id="Dwm" Name="9e9bba3c-2e38-40cb-99f4-9e8281425164" Level="4"><Keywords><Keyword Value="0xFFFF"/></Keywords></EventProvider>
+<EventProvider Id="DXGI" Name="Microsoft-Windows-DXGI" Level="6"><Keywords><Keyword Value="0xffffffffffffffff"/></Keywords></EventProvider>
+<EventProvider Id="CaptureServer" Name="7D0CBD25-390E-524D-8C1E-2A8E846055C0" Level="5"><Keywords><Keyword Value="0xffffffffffffffff"/></Keywords></EventProvider>
+<EventProvider Id="CaptureAPI" Name="347D2CDF-F126-56D7-12B1-69E27C655D7E" Level="5"><Keywords><Keyword Value="0xffffffffffffffff"/></Keywords></EventProvider>
+<EventProvider Id="D3D11" Name="Microsoft-Windows-Direct3D11" Level="6"><Keywords><Keyword Value="0xffffffffffffffff"/></Keywords></EventProvider>
+<EventProvider Id="Win32kFrames" Name="8C416C79-D49B-4F01-A467-E56D3AA8234C" Level="5"><Keywords><Keyword Value="0x1000"/></Keywords></EventProvider>
+<Profile Id="FrameTiming.Verbose.File" Name="FrameTiming" Description="Bounded presentation identity diagnostics" LoggingMode="File" DetailLevel="Verbose"><Collectors><SystemCollectorId Value="System"><SystemProviderId Value="Scheduler"/></SystemCollectorId><EventCollectorId Value="Graphics"><EventProviders><EventProviderId Value="DxgKrnl"/><EventProviderId Value="Dwm"/><EventProviderId Value="DXGI"/><EventProviderId Value="CaptureServer"/><EventProviderId Value="CaptureAPI"/><EventProviderId Value="D3D11"/><EventProviderId Value="Win32kFrames"/></EventProviders></EventCollectorId></Collectors></Profile>
+</Profiles>
+</WindowsPerformanceRecorder>

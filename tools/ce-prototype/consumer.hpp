@@ -108,7 +108,8 @@ using FrameConsumer = std::function<bool(ID3D11Device*, ID3D11DeviceContext*, ID
 int run_capture(DWORD pid, const wchar_t* hookPath, FrameConsumer consumer,
                 std::function<bool()> alive,
                 std::optional<std::chrono::milliseconds> duration = std::nullopt,
-                ID3D11Device* importDevice = nullptr) {
+                ID3D11Device* importDevice = nullptr,
+                bool timestampOnly = false) {
  SharedMemoryLayout* shm=nullptr;
  try {
  FramePixelSamples pixelSamples;
@@ -117,8 +118,8 @@ int run_capture(DWORD pid, const wchar_t* hookPath, FrameConsumer consumer,
  Mapping mainMap,discMap; wchar_t name[128]; GenerateSharedMemName(name,128,GetCurrentProcessId());mainMap.create(name,sizeof(SharedMemoryLayout));
  shm=new(mainMap.p) SharedMemoryLayout{}; shm->SetHostPID(GetCurrentProcessId());
  initialize_passive_capture_config(shm->graphicsConfig);
- shm->runtimeState.captureRequested.store(true);shm->runtimeState.SetRuntimeFlag(kCaptureRuntimeFlagInjectVideoCaptureRequested,true);
- shm->fpsLimiter.SetCaptureFps(240);shm->SetDebugLogging(true);shm->SetLogLevel(static_cast<LogLevel>(3));
+ shm->runtimeState.captureRequested.store(!timestampOnly);shm->runtimeState.SetRuntimeFlag(kCaptureRuntimeFlagInjectVideoCaptureRequested,!timestampOnly);
+ shm->fpsLimiter.SetCaptureFps(timestampOnly ? 0 : 240);shm->SetDebugLogging(true);shm->SetLogLevel(static_cast<LogLevel>(3));
  shm->structSize.store(sizeof(*shm));shm->abiSignature.store(SHARED_MEMORY_ABI_SIGNATURE);shm->SetMagic(SHARED_MEMORY_MAGIC);
  discMap.create(SHARED_MEM_DISCOVERY,sizeof(DiscoveryInfo));auto disc=new(discMap.p) DiscoveryInfo{};
  struct StopCapture {
@@ -166,6 +167,13 @@ int run_capture(DWORD pid, const wchar_t* hookPath, FrameConsumer consumer,
  while(shm->GetSourcePid()!=pid && GetTickCount64()<deadline) { if(WaitForSingleObject(target.v,10)==WAIT_OBJECT_0) throw std::runtime_error("target exited during initialization"); }
  if(shm->GetSourcePid()!=pid) throw std::runtime_error("hook initialization timeout");
  SetEvent(patternStart.v); }
+ if(timestampOnly) {
+   if(!duration)throw std::runtime_error("timestamp observer requires a bounded duration");
+   // No GPU device, texture import, recording request, or capture-rate override.
+   WaitForSingleObject(target.v,static_cast<DWORD>(duration->count()));
+   if(shm->frameRing.load_write_index_acquire()!=0)throw std::runtime_error("observer unexpectedly captured textures");
+   return 0;
+ }
  ComPtr<ID3D11Device> device;ComPtr<ID3D11Device1> device1;ComPtr<ID3D11Device5> device5;ComPtr<ID3D11DeviceContext> context;
  ComPtr<ID3D11Fence> fence; uint64_t fenceRemote=0; ComPtr<ID3D11Texture2D> textures[SHARED_TEXTURE_SLOT_COUNT];
  Handle textureObjects[SHARED_TEXTURE_SLOT_COUNT], fenceObject;
@@ -276,7 +284,7 @@ int run_capture(DWORD pid, const wchar_t* hookPath, FrameConsumer consumer,
  return 1;}
 }
 
-#ifndef CE_EMBEDDED
+#if !defined(CE_EMBEDDED) && !defined(CE_NO_PROBE_MAIN)
 int wmain(int argc,wchar_t**argv) {
  if(argc!=4){fprintf(stderr,"usage: probe target-pid hook-dll seconds\n");return 2;}
  const int seconds=_wtoi(argv[3]);
