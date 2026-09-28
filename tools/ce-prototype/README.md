@@ -138,3 +138,18 @@ mean/p99 was 0.560/0.662 ms, while the presentation schedule led the callback by
 33.6 ms. These timings exclude encoding, network and client work. This is a
 measurement check, not a gameplay latency benchmark. Matching hook source commit:
 `0ed5952`, on the v0.1.6772-derived tree.
+
+### Generated-image validation
+
+The native DX12 DLSS-G moving-bar fixture completed a direct-capture run at 2× FG.
+A full-width centre scanline readback sampled 240 consecutive final-output frames:
+all 240 had distinct pixel hashes, with no consecutive duplicates and the bar
+present in every sample. The hook reported approximately 58.5 base / 117 output
+FPS. This supports capturing generated images rather than repeating base images;
+it is not an exhaustive claim about every FG mode or workload. The fixture and
+capture shut down normally and desktop capture resumed on the existing stream.
+
+The optional pixel diagnostic now samples a full-width centre scanline instead
+of a centre crop. Its CSV includes bright-pixel position/count for RGBA8 sources;
+other formats retain hashes and report position -1. It remains synchronous,
+bounded to the requested sample count, and unsuitable for latency measurements.
