@@ -10,6 +10,12 @@ float4 ps(Vertex input):SV_Target {
  uint width,height;src.GetDimensions(width,height);
  uint2 pixel=min(uint2(saturate(input.uv)*float2(width,height)),uint2(width-1,height-1));
  float3 raw=src.Load(int3(pixel,0)).rgb;
+ #ifdef SOURCE_ENCODE_SDR
+ float3 v=max(raw,0);
+ float3 low=v*12.92;
+ float3 high=1.055*pow(v,1.0/2.4)-0.055;
+ return float4(float3(v.r<=0.0031308?low.r:high.r,v.g<=0.0031308?low.g:high.g,v.b<=0.0031308?low.b:high.b),1);
+ #else
  #ifdef SOURCE_LINEAR
  return float4(raw,1);
  #else
@@ -25,4 +31,5 @@ float4 ps(Vertex input):SV_Target {
  return float4(rgb*125.0,1);
 #endif
 #endif
+ #endif
 })";

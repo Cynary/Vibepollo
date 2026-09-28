@@ -47,7 +47,7 @@ interpret source-to-observation differences as measured capture latency.
 - Shared texture/fence replacement across resolution changes. The consumer
   compares NT object identity because Windows can reuse a numeric handle for a
   different resource. Comparing the numbers alone caused a reproducible timeout.
-- Ten GPU colour vectors for SDR and HDR10 conversion to scRGB, including values
+- Forty GPU colour vectors for SDR, sRGB texture views and HDR10 conversion, including values
   outside the Rec.709 gamut.
 - Three consecutive Steam/MoonDeck launches with the readiness wrapper reached
   direct HDR capture and shut down normally after exiting the game.
@@ -97,3 +97,9 @@ g++ -std=c++20 -O2 -static tests/colour_test.cpp -ld3d11 -ld3dcompiler -o colour
 
 This checks ten GPU conversion vectors against CPU reference values. It does
 not verify the subsequent video encoder, decoder, or TV output.
+
+Typed sRGB input views already return linear values. The bridge preserves those
+values for scRGB output and re-encodes them for an ordinary SDR output surface.
+The GPU test covers both paths; forcing the earlier SDR shader reproduces the
+double-conversion error (0.00405 instead of 0.05127 for one channel). These
+checks validate the conversion shader, not the full encoded HDR stream.

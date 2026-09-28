@@ -4,13 +4,14 @@
 #include "consumer.hpp"
 #include <d3dcompiler.h>
 #include "colour_shader.hpp"
+#include "colour_view.hpp"
 
 class CeOutput {
   SharedResourceManager ownedResources;
   SharedResourceManager& resources;
   bool externalResources=false;
   ComPtr<ID3D11VertexShader> vs;
-  ComPtr<ID3D11PixelShader> ps, sdrPs, linearPs;
+  ComPtr<ID3D11PixelShader> ps, sdrPs, linearPs, encodeSdrPs;
   ComPtr<ID3D11RenderTargetView> rtv;
   ComPtr<ID3D11Fence> complete;
   ComPtr<ID3D11DeviceContext4> ctx4;
@@ -54,6 +55,10 @@ class CeOutput {
         const D3D_SHADER_MACRO linearDefines[]={{"SOURCE_LINEAR","1"},{nullptr,nullptr}};
         check(D3DCompile(capture_colour_shader,sizeof(capture_colour_shader),nullptr,linearDefines,nullptr,"ps","ps_5_0",D3DCOMPILE_OPTIMIZATION_LEVEL3,0,&blob,&errors),"linear pixel shader");
         check(device->CreatePixelShader(blob->GetBufferPointer(),blob->GetBufferSize(),nullptr,&linearPs),"linear pixel shader object");
+        blob.Reset();errors.Reset();
+        const D3D_SHADER_MACRO encodeDefines[]={{"SOURCE_ENCODE_SDR","1"},{nullptr,nullptr}};
+        check(D3DCompile(capture_colour_shader,sizeof(capture_colour_shader),nullptr,encodeDefines,nullptr,"ps","ps_5_0",D3DCOMPILE_OPTIMIZATION_LEVEL3,0,&blob,&errors),"sRGB encoding shader");
+        check(device->CreatePixelShader(blob->GetBufferPointer(),blob->GetBufferSize(),nullptr,&encodeSdrPs),"sRGB encoding shader object");
         check(device->CreateRenderTargetView(resources.get_shared_texture().get(),nullptr,&rtv),"PQ RTV");
       }
       auto data=resources.get_shared_handle_data();
@@ -75,10 +80,16 @@ class CeOutput {
     if(mutex->AcquireSync(0,1000)!=S_OK) throw std::runtime_error("output texture busy/abandoned");
     auto release=util::fail_guard([&]{mutex->ReleaseSync(0);});
     if(desc.Width!=outputDesc.Width || desc.Height!=outputDesc.Height || desc.Format!=outputDesc.Format || (outputLinear && desc.Format!=DXGI_FORMAT_R16G16B16A16_FLOAT)) {
-      ComPtr<ID3D11ShaderResourceView>srv;check(device->CreateShaderResourceView(source,nullptr,&srv),"PQ SRV");
+      ComPtr<ID3D11ShaderResourceView>srv;check(device->CreateShaderResourceView(source,nullptr,&srv),"capture SRV");
       auto input=srv.Get();auto target=rtv.Get();
       context->IASetInputLayout(nullptr);context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-      context->VSSetShader(vs.Get(),nullptr,0);context->PSSetShader(outputLinear && desc.Format!=DXGI_FORMAT_R16G16B16A16_FLOAT?(pq?ps.Get():sdrPs.Get()):linearPs.Get(),nullptr,0);
+      context->VSSetShader(vs.Get(),nullptr,0);
+      auto shader=linearPs.Get();
+      if(outputLinear && desc.Format!=DXGI_FORMAT_R16G16B16A16_FLOAT && !capture_view_linearizes(desc.Format))
+        shader=pq?ps.Get():sdrPs.Get();
+      else if(!outputLinear && !capture_view_linearizes(outputDesc.Format) && capture_view_linearizes(desc.Format))
+        shader=encodeSdrPs.Get();
+      context->PSSetShader(shader,nullptr,0);
       context->PSSetShaderResources(0,1,&input);context->OMSetRenderTargets(1,&target,nullptr);
       const float scale=std::min(float(outputDesc.Width)/desc.Width,float(outputDesc.Height)/desc.Height);
       const float width=desc.Width*scale,height=desc.Height*scale;
