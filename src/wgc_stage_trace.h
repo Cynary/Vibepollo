@@ -1,40 +1,28 @@
 #pragma once
-#include <chrono>
-#include <cstdlib>
+#include "rolling_diagnostic_trace.h"
 #include <cstdint>
-#include <fstream>
-#include <mutex>
-#include <string>
-#include <thread>
-#include <vector>
+#ifdef _WIN32
+#include <winsock2.h>
+#include <windows.h>
+#endif
 namespace wgc_stage_trace {
-struct event { uint64_t qpc; int64_t time; const char* stage; };
+struct event { uint64_t qpc; int64_t time; const char* stage; uint64_t callback_id; uint32_t call_index; uint32_t process_id; uint32_t thread_id; int64_t trace_lock_wait_us; int64_t trace_append_us; };
 class recorder {
- std::string path;
- std::mutex mutex;
- std::vector<event> events;
- std::thread writer;
- bool finished=false;
- void finish() {
-  if(finished || path.empty()) return;
-  finished=true;
-  writer=std::thread([dest=path,data=std::move(events)] {
-   std::ofstream out(dest,std::ios::trunc);out<<"source_100ns,steady_us,stage\n";
-   for(auto& e:data)out<<e.qpc<<','<<e.time<<','<<e.stage<<'\n';
-  });
+ static void write(std::ostream& out, const event& e) {
+  out << e.qpc << ',' << e.time << ',' << e.stage << ',' << e.callback_id << ',' << e.call_index << ',' << e.process_id << ',' << e.thread_id << ',' << e.trace_lock_wait_us << ',' << e.trace_append_us << '\n';
  }
+ rolling_diagnostic_trace::recorder<event> trace;
 public:
- recorder(const char* suffix=".wgc.csv"){if(auto p=std::getenv("MOONMACHINE_HOST_FRAME_TRACE")){path=std::string(p)+suffix;events.reserve(60000);}}
- ~recorder(){finish();if(writer.joinable())writer.join();}
- void add(uint64_t qpc,const char* stage){
-  if(path.empty())return;
-  auto now=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
-  std::lock_guard lock(mutex);
-  if(finished)return;
-  events.push_back({qpc,now,stage});
-  if(events.size()>=60000 || now-events.front().time>=90000000)finish();
+ recorder(const char* suffix=".wgc.csv") : trace(suffix,"source_100ns,steady_us,stage,callback_id,call_index,process_id,thread_id,trace_lock_wait_us,trace_append_us\n",write) {}
+ void add(uint64_t qpc, const char* stage, uint64_t callback_id = 0, uint32_t call_index = 0) {
+  const auto now=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+  #ifdef _WIN32
+  trace.add({qpc,now,stage,callback_id,call_index,GetCurrentProcessId(),GetCurrentThreadId(),0,0});
+#else
+  trace.add({qpc,now,stage,callback_id,call_index,0,0,0,0});
+#endif
  }
 };
-inline void record(uint64_t qpc,const char* stage){static recorder r;r.add(qpc,stage);}
+inline void record(uint64_t qpc,const char* stage,uint64_t callback_id=0,uint32_t call_index=0){static recorder r;r.add(qpc,stage,callback_id,call_index);}
 inline void capture(const char* stage){static recorder r(".capture.csv");r.add(0,stage);}
 }
