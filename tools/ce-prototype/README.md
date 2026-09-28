@@ -144,7 +144,7 @@ for other games, anti-cheat systems, drivers, or frame-generation implementation
 - Broaden startup/resize validation beyond the tested games. The matching hook
   now retains its frame-processing lock and releases tracked DX12 resources
   before a preserved-swapchain resize; repeated Stellar Blade launches passed.
-- Validate controller gameplay and generated-frame completeness through the client.
+- Validate longer controller-play sessions and additional frame-generation modes.
 - Expand HDR validation beyond static colour patches and measure latency under gameplay.
 - Improve resize scaling, which currently uses point sampling with letterboxing.
   Native-resolution output is unaffected.
@@ -227,6 +227,18 @@ The optional pixel diagnostic now samples a full-width centre scanline instead
 of a centre crop. Its CSV includes bright-pixel position/count for RGBA8 sources;
 other formats retain hashes and report position -1. It remains synchronous,
 bounded to the requested sample count, and unsuitable for latency measurements.
+
+The same 4K DLSS 2x fixture was subsequently recorded at Moonlight's accepted
+HEVC-packet boundary on the client and decoded offline. A steady sample of 480
+consecutive decoded frames had no repeated scanlines or bar positions. Median
+bar movement was 16 pixels per received frame, versus about 32 pixels expected
+at the independently reported 58.5 FPS base rate. The hook reported 117 output
+FPS, and the received stream was 3840x2160 HEVC 4:4:4 10-bit with PQ/BT.2020
+metadata. This verifies extra motion images through capture, encoding, network
+delivery and decoding. The fixture content itself was SDR; native HDR colour
+was checked separately with the patch-pattern test above. This does not measure
+physical display presentation or promise that every generated frame survives
+capture rate limiting.
 
 #### Matched frame-generation capture comparison
 
