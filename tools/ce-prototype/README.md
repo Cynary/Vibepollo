@@ -2,7 +2,8 @@
 
 This replaces desktop capture with a game's shared GPU textures while keeping the
 same Vibepollo stream connected. It uses CaptureEngine v0.1.6772's MIT-licensed
-hook and shared-memory interface. It is experimental and disabled by default.
+hook and shared-memory interface, with the ABI 63 changes described below.
+It is experimental and disabled by default.
 
 Set `MOONMACHINE_CE_TARGET_PATH` to the full path of the game's executable and
 `MOONMACHINE_CE_HOOK` to `capture_hook_x64.dll` before the capture helper starts.
@@ -18,8 +19,15 @@ for diagnostics and takes precedence; leave it unset for automatic selection.
 
 ## MoonDeck startup
 
-For testing, build `stream_launcher.cpp` as a Windows GUI executable and prefix
-the existing MoonDeckStream application command with its quoted path. This
+The Windows build includes `ce-stream-launcher.exe`; its install rule puts it
+in `tools` beside the capture helper. Prefix the existing MoonDeckStream
+application command with its quoted path. For example:
+
+```text
+"C:\Program Files\Apollo\tools\ce-stream-launcher.exe" "C:\Users\YourName\AppData\Local\Programs\MoonDeckBuddy\bin\MoonDeckStream.exe"
+```
+
+The existing command and arguments after the prefix stay unchanged. This
 wrapper waits for the capture helper's readiness event before launching the
 original MoonDeckStream command. Buddy therefore starts the game after the
 helper is watching, rather than racing capture initialization. Without this
@@ -29,6 +37,18 @@ Use this wrapper only with the prototype enabled. It fails after 45 seconds if
 no helper signals readiness. Restore the original application command when
 restoring the normal helper. It does not solve arbitrary late injection or
 guarantee that process polling beats every game's graphics initialization.
+
+To build only the launcher from this directory on Windows:
+
+```sh
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+powershell -NoProfile -File tests/readiness_test.ps1 -Launcher build/ce-stream-launcher.exe
+```
+
+Run the readiness test with streaming stopped. It checks the 45-second timeout
+and that a launched child's exit code reaches the caller. The launcher does
+not include the CaptureEngine hook; use the matching ABI 63 hook build.
 
 ## Timing diagnostics
 
@@ -95,7 +115,7 @@ g++ -std=c++20 -O2 -static tests/colour_test.cpp -ld3d11 -ld3dcompiler -o colour
 ./colour-test.exe
 ```
 
-This checks ten GPU conversion vectors against CPU reference values. It does
+This checks forty GPU conversion vectors against CPU reference values. It does
 not verify the subsequent video encoder, decoder, or TV output.
 
 Typed sRGB input views already return linear values. The bridge preserves those

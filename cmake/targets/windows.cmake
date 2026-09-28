@@ -76,6 +76,7 @@ foreach(_packaged_target IN ITEMS
         audio-info
         sunshinesvc
         playnite-launcher
+        ce-stream-launcher
         sunshine_wgc_capture
         sunshine_display_helper)
     if(TARGET "${_packaged_target}")
