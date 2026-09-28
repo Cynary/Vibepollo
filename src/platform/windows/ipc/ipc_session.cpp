@@ -175,6 +175,8 @@ namespace platf::dxgi {
         _pipe.reset();
       }
 
+      stop_helper_process();
+
       if (_frame_metadata) {
         UnmapViewOfFile(_frame_metadata);
         _frame_metadata = nullptr;
@@ -184,8 +186,6 @@ namespace platf::dxgi {
       _keyed_mutex = nullptr;
       _frame_ready_event.close();
       _frame_metadata_mapping.close();
-
-      stop_helper_process();
     } catch (...) {
       // Intentionally swallow all exceptions.
     }
@@ -244,6 +244,9 @@ namespace platf::dxgi {
       _pipe->stop();
       _pipe.reset();
     }
+    // Keep imported GPU resources alive until the helper has quiesced.
+    stop_helper_process();
+
     if (_frame_metadata) {
       UnmapViewOfFile(_frame_metadata);
       _frame_metadata = nullptr;
@@ -256,10 +259,6 @@ namespace platf::dxgi {
     _frame_qpc = 0;
     _force_reinit = false;
     _should_swap_to_dxgi = false;
-
-    // Ensure previous helper is fully stopped before restarting. This avoids overlapping D3D11 allocations
-    // across rapid re-inits that have been observed to destabilize the NVIDIA driver stack.
-    stop_helper_process();
 
     // Give the driver a brief window to release resources if we just tore down.
     if (_last_helper_stop.time_since_epoch().count() != 0) {
@@ -833,11 +832,25 @@ namespace platf::dxgi {
     }
 
     DWORD exit_code = 0;
-    _process_helper->terminate();  // best effort
-    if (!_process_helper->wait_for(exit_code, wgc_policy::helper_stop_timeout_ms)) {
+    const bool exited = wgc_policy::stop_helper(
+      [&] {
+        if (_pipe) {
+          _pipe->stop();
+          _pipe.reset();
+        }
+      },
+      [&](DWORD timeout) { return _process_helper->wait_for(exit_code, timeout); },
+      [&] {
+        BOOST_LOG(warning) << "WGC helper did not exit after control-pipe shutdown; terminating it.";
+        _process_helper->terminate();
+      }
+    );
+    if (!exited) {
       BOOST_LOG(warning) << "WGC helper did not exit within " << wgc_policy::helper_stop_timeout_ms
                          << "ms after termination request; continuing teardown.";
       _process_helper = std::make_unique<ProcessHandler>();
+    } else {
+      BOOST_LOG(debug) << "WGC helper stopped, exit_code=" << exit_code;
     }
     _last_helper_stop = std::chrono::steady_clock::now();
   }

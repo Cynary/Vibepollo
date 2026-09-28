@@ -7,6 +7,18 @@ namespace platf::dxgi::wgc_policy {
   inline constexpr std::uint32_t adaptive_max_buffer_size = 2;
   inline constexpr std::uint32_t helper_stop_timeout_ms = 3000;
 
+  // Closing the control pipe asks the helper to retire its capture resources.
+  // Killing it immediately can invalidate shared fences still used by a game.
+  template<class RequestStop, class Wait, class Terminate>
+  bool stop_helper(RequestStop request_stop, Wait wait, Terminate terminate) {
+    request_stop();
+    if (wait(helper_stop_timeout_ms)) {
+      return true;
+    }
+    terminate();
+    return wait(helper_stop_timeout_ms);
+  }
+
   // Absolute input uses the whole virtual desktop, not just the captured
   // monitor. A neighbouring monitor can change these values without moving
   // or resizing the capture target itself.
