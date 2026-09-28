@@ -95,8 +95,6 @@ for other games, anti-cheat systems, drivers, or frame-generation implementation
   successful launches do not prove it is fixed.
 - Validate controller gameplay and generated-frame completeness through the client.
 - Expand HDR validation beyond static colour patches and measure latency under gameplay.
-- Audit CaptureEngine's generated-frame timestamps: they include a synthetic
-  presentation schedule and cannot be treated as measured capture times.
 - Improve resize scaling, which currently uses point sampling with letterboxing.
   Native-resolution output is unaffected.
 
@@ -157,7 +155,10 @@ or clock-order violations. In the steady 2× FG menu portion, callback-to-publis
 mean/p99 was 0.560/0.662 ms, while the presentation schedule led the callback by
 33.6 ms. These timings exclude encoding, network and client work. This is a
 measurement check, not a gameplay latency benchmark. Matching hook source commit:
-`0ed5952`, on the v0.1.6772-derived tree.
+`0ed5952`, on the v0.1.6772-derived tree. The later `dbb5e79` fix keeps
+the frame-processing mutex owned through capture and drawing; HDR startup and
+DLSS 2x on/off transitions passed in Stellar Blade with it. The intermittent
+resize failure still needs repeated validation.
 
 ### Generated-image validation
 
@@ -191,3 +192,23 @@ timestamps and measured callback times remain separate in the trace.
 Helper stage traces use a process-specific filename so the host and helper do
 not overwrite each other's snapshots. Request the helper snapshot before
 ending the stream when investigating shutdown failures.
+
+### Rolling helper diagnostics
+
+The helper includes the same rolling trace implementation used in these tests.
+When `MOONMACHINE_HOST_FRAME_TRACE` is set, stage events retain the latest three
+minutes (up to two million events). Create the helper's `.wgc.csv.snapshot` file
+and wait for its removal before reading the CSV. Taking a snapshot does not stop
+recording. The writer runs separately from the capture thread; capture only adds
+to the in-memory queue. These diagnostics remain opt-in.
+
+The standalone regression checks recording beyond the former 90-second cutoff,
+removal of old events, and repeated snapshots. From this directory:
+
+```sh
+g++ -std=c++20 -O2 -static tests/rolling_trace_test.cpp -o rolling-trace-test.exe
+./rolling-trace-test.exe
+```
+
+It passed on Windows and Linux. The two headers are byte-identical to those used
+by the Windows helper in the matched capture and subsequent transition tests.
