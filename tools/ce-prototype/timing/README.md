@@ -89,3 +89,32 @@ client measurements separate.
 
 Regression checks: `python test_analysis.py`, CaptureEngine's `PresentObserver.*`
 unit tests, and the live pixel-ID/empty-capture-ring checks described above.
+
+## Present to NVENC submission
+
+`ce-timestamp-observer.exe PID --listen SECONDS output.csv` creates the diagnostic
+mapping without taking ownership of CaptureEngine's control channel. Start it
+before the real helper injects the hook. The named readiness event is
+`Global\\CEPresentObserverReady-PID`. An inactive existing mapping can be reopened
+without resetting its ring; filter by the new measurement window. This does not
+rearm a dormant hook's own tracing: a fresh game process is the reproducible
+choice when changing capture modes. Never run two observers for one target.
+
+An opt-in `MOONMACHINE_NVENC_SUBMIT_TRACE` path records encoder entry, the CPU
+timestamp immediately before `nvEncEncodePicture`, and bitstream availability.
+It retains 60,000 samples and writes at encoder-thread exit. Each thread has its
+own output suffix so startup capability checks cannot overwrite the stream.
+No files are written in the per-frame path. Match by frame index **and** encoder
+entry time; frame numbers restart between sessions. API submission is not proof
+that the NVENC hardware engine has begun processing.
+
+For direct capture without generated frames, link the measured source QPC in
+the helper timing CSV to its containing Present span, then follow that source
+timestamp to the host frame record. For WGC use the validated fixture's ETW
+association, noting that latest compositor selection remains an inference for
+arbitrary games. Report missing/duplicate associations and reject impossible
+timestamp ordering. Do not subtract unrelated callback distributions.
+
+The standalone `test_submission_trace.cpp` verifies that simultaneous encoder
+threads produce separate files. Compile with C++20 and pass a new temporary
+directory. It needs no GPU or timing sleeps.
