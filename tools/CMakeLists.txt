@@ -85,6 +85,8 @@ target_link_libraries(playnite-launcher
         ${PLATFORM_LIBRARIES})
 target_compile_options(playnite-launcher PRIVATE ${SUNSHINE_COMPILE_OPTIONS})
 # Add sunshine_wgc_capture executable
+add_subdirectory(ce-prototype)
+
 add_executable(sunshine_wgc_capture
         sunshine_wgc_capture.cpp
         ${CMAKE_SOURCE_DIR}/src/platform/windows/ipc/pipes.cpp
