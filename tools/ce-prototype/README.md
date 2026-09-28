@@ -74,7 +74,7 @@ for other games, anti-cheat systems, drivers, or frame-generation implementation
 - Investigate the intermittent preserved-swapchain resize assertion; subsequent
   successful launches do not prove it is fixed.
 - Validate controller gameplay and generated-frame completeness through the client.
-- Validate complete HDR encode/decode output and measure latency under gameplay.
+- Expand HDR validation beyond static colour patches and measure latency under gameplay.
 - Audit CaptureEngine's generated-frame timestamps: they include a synthetic
   presentation schedule and cannot be treated as measured capture times.
 - Improve resize scaling, which currently uses point sampling with letterboxing.
@@ -103,3 +103,17 @@ values for scRGB output and re-encodes them for an ordinary SDR output surface.
 The GPU test covers both paths; forcing the earlier SDR shader reproduces the
 double-conversion error (0.00405 instead of 0.05127 for one channel). These
 checks validate the conversion shader, not the full encoded HDR stream.
+
+### HDR stream validation
+
+A D3D12 pattern was captured directly, converted to scRGB, encoded by Vibepollo,
+received by Moonlight, and decoded from the received HEVC packets for numeric
+comparison. The stream was 3840×2160, YUV 4:4:4 10-bit, limited range, PQ/BT.2020.
+Eight neutral and eight coloured patches matched the expected YUV values within
+0.474 of a 10-bit code value. The coloured set includes one-code RGB differences.
+This verifies the tested colour conversion and encoded stream; it does not
+measure the TV's tone mapping or establish gameplay latency or complete frame
+generation capture. Recording and readback runs are excluded from benchmarks.
+
+Both fixture runs completed their SDR-to-HDR resize and returned to desktop
+capture on the existing stream. These runs used the helper built from `397b2b4`.
