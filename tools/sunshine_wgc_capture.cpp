@@ -94,6 +94,10 @@ constexpr auto __mingw_uuidof<winrt::Windows::Graphics::DirectX::Direct3D11::IDi
 }
 #endif
 
+#define CE_EMBEDDED
+#include "ce-prototype/consumer.hpp"
+#include <d3dcompiler.h>
+
 using namespace winrt;
 using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::Graphics;
@@ -1036,6 +1040,10 @@ public:
  * - Frame rate optimization and adaptive buffering
  * - Integration with shared texture resources and event signaling for inter-process communication
  */
+#include "ce-prototype/bridge.hpp"
+#include "ce-prototype/target.hpp"
+#include "ce-prototype/stream_ready.hpp"
+
 struct WgcCaptureDependencies {
   // Required devices/resources
   IDirect3DDevice winrt_device;  // WinRT Direct3D device (value-type COM handle)
@@ -2339,6 +2347,18 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  // Deliberately opt-in: normal WGC remains unchanged when this is absent.
+  if (const char* selected = std::getenv("MOONMACHINE_CE_TARGET_PID")) {
+    char* end = nullptr;
+    const unsigned long target = std::strtoul(selected, &end, 10);
+    wchar_t hook[32768];
+    if (!target || *end || !GetEnvironmentVariableW(L"MOONMACHINE_CE_HOOK", hook, 32768)) {
+      BOOST_LOG(error) << "Invalid explicit CaptureEngine prototype configuration";
+      return 1;
+    }
+    return run_ce_bridge(static_cast<DWORD>(target), hook, *pipe_shared);
+  }
+
   // Monitor management
   DisplayManager display_manager;
   if (!display_manager.select_monitor(g_config)) {
@@ -2445,26 +2465,24 @@ int main(int argc, char *argv[]) {
   BOOST_LOG(info) << "Duplicated handle data sent successfully to main process";
 
   // Create dependencies for capture manager
-  WgcCaptureDependencies deps {
-    d3d11_manager.get_winrt_device(),
-    item,
-    shared_resource_manager,
-    d3d11_manager.get_context()
-  };
-
   // Create WGC capture manager
-  WgcCaptureManager wgc_capture_manager {capture_format, display_manager.get_width(), display_manager.get_height(), std::move(deps)};
+  CeTargetSelector direct_target;
+  auto make_wgc = [&] {
+    return std::make_unique<WgcCaptureManager>(capture_format,display_manager.get_width(),display_manager.get_height(),
+      WgcCaptureDependencies{d3d11_manager.get_winrt_device(),item,shared_resource_manager,d3d11_manager.get_context()});
+  };
+  auto wgc_capture_manager=make_wgc();
   const auto initial_frame_buffer_size = std::clamp<uint32_t>(
     g_config.initial_frame_buffer_size ? g_config.initial_frame_buffer_size : 1,
     1,
     std::max<uint32_t>(1, g_config.max_frame_buffer_size ? g_config.max_frame_buffer_size : 1)
   );
-  if (!wgc_capture_manager.create_or_adjust_frame_pool(initial_frame_buffer_size)) {
+  if (!wgc_capture_manager->create_or_adjust_frame_pool(initial_frame_buffer_size)) {
     BOOST_LOG(error) << "Failed to create frame pool";
     return 1;
   }
 
-  if (!wgc_capture_manager.create_capture_session()) {
+  if (!wgc_capture_manager->create_capture_session()) {
     BOOST_LOG(error) << "Failed to create capture session";
     return 1;
   }
@@ -2472,7 +2490,9 @@ int main(int argc, char *argv[]) {
   // Set up desktop switch hook for secure desktop detection
   setup_desktop_switch_hook();
 
-  wgc_capture_manager.start_capture();
+  wgc_capture_manager->start_capture();
+
+  CeStreamReady direct_ready(direct_target.enabled());
 
   // Main message loop
   bool shutdown_requested = false;
@@ -2483,6 +2503,35 @@ int main(int argc, char *argv[]) {
     }
 
     poll_pending_secure_desktop_transition();
+
+    if(DWORD target=direct_target.next()) {
+      wchar_t hook[32768];
+      DWORD length=GetEnvironmentVariableW(L"MOONMACHINE_CE_HOOK",hook,32768);
+      if(!length || length>=32768) {
+        BOOST_LOG(error)<<"Direct capture target ignored: hook path missing or too long";
+      } else {
+        BOOST_LOG(info)<<"Switching desktop capture to direct game capture, PID "<<target;
+        int result=run_ce_bridge_shared(target,hook,*pipe_shared,shared_resource_manager,d3d11_manager.get_device().get(),
+          [&] {
+            // Join delivery and drain callbacks before CE writes to the same
+            // context/texture. Until then, keep the loading screen visible.
+            wgc_capture_manager.reset();
+          },[&] {
+            process_window_messages(shutdown_requested);
+            poll_pending_secure_desktop_transition();
+            return pipe_shared->is_connected() && !shutdown_requested && !g_capture_item_closed.load(std::memory_order_acquire);
+          });
+        BOOST_LOG(info)<<"Direct capture ended, result="<<result;
+        if(!pipe_shared->is_connected() || g_capture_item_closed.load(std::memory_order_acquire))break;
+        if(!wgc_capture_manager) {
+          wgc_capture_manager=make_wgc();
+          if(!wgc_capture_manager->create_or_adjust_frame_pool(initial_frame_buffer_size) ||
+             !wgc_capture_manager->create_capture_session())return 1;
+          wgc_capture_manager->start_capture();
+        }
+        BOOST_LOG(info)<<"Desktop capture resumed on the existing stream";
+      }
+    }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(1));  // Reduced from 5ms for lower IPC jitter
   }
