@@ -354,5 +354,14 @@ The matching hook also keeps capture-resource destruction on the render thread
 for games with a single-threaded D3D11 device. Overcooked 2 exposed the previous
 background-release race: reconnect froze after 14–15 frames. The corrected build
 passed three reconnects of the same game process, followed by input-driven exit
-and return to desktop capture without closing the stream. Final package
-verification is still in progress.
+and return to desktop capture without closing the stream.
+
+The final hook build, 0.1.31 (`997c23c`), passed the full native verification gate,
+including unit tests, x64 ASan/UBSan and static warning limits. An x86 sanitizer
+runtime was unavailable. The subsequent Stellar Blade check used this exact
+build with HDR and DLSS 2x: reconnect resumed final-output capture, the received
+video decoded as 4K 10-bit 4:4:4 PQ/BT.2020, and 240 decoded frames had no
+adjacent duplicate hashes. Normal game exit returned to desktop capture. Setup
+v2 then restored both original binaries, verified by their SHA-256 hashes.
+The three Overcooked reconnects used build 0.1.30; the final 0.1.31 verification
+rebuild included a comment correction and no additional functional change.
