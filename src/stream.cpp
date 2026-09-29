@@ -1939,6 +1939,10 @@ namespace stream {
   }
 
   void videoBroadcastThread(udp::socket &sock) {
+    // Join the diagnostic worker before returning from this thread. On Windows,
+    // a thread_local destructor runs under the loader lock and must not join
+    // another thread, whose exit also needs that lock.
+    host_frame_trace::recorder frame_trace;
     auto shutdown_event = mail::man->event<bool>(mail::broadcast_shutdown);
     auto packets = mail::man->queue<video::packet_t>(mail::video_packets);
     auto video_epoch = std::chrono::steady_clock::now();
@@ -2359,7 +2363,6 @@ namespace stream {
         session->video.lowseq = lowseq;
 
         const auto send_complete_timestamp = std::chrono::steady_clock::now();
-        static thread_local host_frame_trace::recorder frame_trace;
         frame_trace.add({packet->frame_index(), timestamp, packet->data_size(), frame_is_dupe,
           host_frame_trace::us(packet->capture_timestamp.value_or(*packet->frame_timestamp)),
           host_frame_trace::us(packet->host_processing_timestamp.value_or(std::chrono::steady_clock::time_point {})),

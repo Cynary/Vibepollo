@@ -1322,23 +1322,37 @@ public:
     // Track callback invocations
     static std::atomic<uint64_t> callback_count {0};
     auto cc = ++callback_count;
+    uint64_t trace_frame_qpc = 0;
+    wgc_stage_trace::record(0, "callback_enter", cc);
+    auto trace_callback_exit = util::fail_guard([&]() {
+      wgc_stage_trace::record(trace_frame_qpc, "callback_exit", cc);
+    });
     if (cc == 1) {
       BOOST_LOG(info) << "First FrameArrived callback invoked";
     }
 
     Direct3D11CaptureFrame frame = nullptr;
     uint32_t drained_frames = 0;
+    uint32_t retrieval_index = 0;
+    const auto retrieve_frame = [&]() {
+      const auto index = ++retrieval_index;
+      wgc_stage_trace::record(0, "retrieve_start", cc, index);
+      auto trace_retrieve_exit = util::fail_guard([&]() {
+        wgc_stage_trace::record(0, "retrieve_end", cc, index);
+      });
+      return sender.TryGetNextFrame();
+    };
 
     try {
       if (drain_to_latest()) {
-        while (auto next_frame = sender.TryGetNextFrame()) {
+        while (auto next_frame = retrieve_frame()) {
           if (frame) {
             ++drained_frames;
           }
           frame = std::move(next_frame);
         }
       } else {
-        frame = sender.TryGetNextFrame();
+        frame = retrieve_frame();
       }
     } catch (const winrt::hresult_error &ex) {
       BOOST_LOG(error) << "WinRT error retrieving WGC frame: " << ex.code() << " - " << winrt::to_string(ex.message());
@@ -1346,6 +1360,7 @@ public:
     }
 
     if (!frame) {
+      wgc_stage_trace::record(0, "callback_empty", cc);
       // Frame drop detected - record timestamp for sliding window analysis
       auto now = std::chrono::steady_clock::now();
       _drop_timestamps.push_back(now);
@@ -1360,13 +1375,20 @@ public:
     } else {
       // Frame successfully retrieved
       try {
+        wgc_stage_trace::record(0, "surface_start", cc);
         auto surface = frame.Surface();
+        wgc_stage_trace::record(0, "surface_end", cc);
 
         // Get frame timing information from the WGC frame
+        wgc_stage_trace::record(0, "timestamp_start", cc);
         uint64_t frame_qpc = frame.SystemRelativeTime().count();
-        wgc_stage_trace::record(frame_qpc, "callback_frame");
+        trace_frame_qpc = frame_qpc;
+        wgc_stage_trace::record(frame_qpc, "callback_frame", cc);
         record_frame_arrival(drained_frames);
-        if (admit_activity_frame()) {
+        wgc_stage_trace::record(frame_qpc, "arrival_accounted", cc);
+        const bool admitted = admit_activity_frame();
+        wgc_stage_trace::record(frame_qpc, "admission_done", cc);
+        if (admitted) {
           queue_frame_for_delivery(std::move(frame), surface, frame_qpc);
         }
       } catch (const winrt::hresult_error &ex) {
@@ -1376,7 +1398,9 @@ public:
     }
 
     // Check if we need to adjust frame buffer size
+    wgc_stage_trace::record(trace_frame_qpc, "pool_adjust_start", cc);
     check_and_adjust_frame_buffer();
+    wgc_stage_trace::record(trace_frame_qpc, "pool_adjust_end", cc);
   }
 
 private:
@@ -1725,10 +1749,14 @@ private:
    * @param frame_qpc The QPC timestamp from when the frame was captured.
    */
   void queue_frame_for_delivery(Direct3D11CaptureFrame frame, winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DSurface surface, uint64_t frame_qpc) {
+    auto trace_handoff_exit = util::fail_guard([&]() {
+      wgc_stage_trace::record(frame_qpc, "handoff_locals_released");
+    });
     if (!_deps) {
       return;
     }
 
+    wgc_stage_trace::record(frame_qpc, "interface_start");
     // Get DXGI access
     winrt::com_ptr<IDirect3DDxgiInterfaceAccess> ia;
     if (FAILED(winrt::get_unknown(surface)->QueryInterface(__uuidof(IDirect3DDxgiInterfaceAccess), ia.put_void()))) {
@@ -1736,6 +1764,7 @@ private:
       return;
     }
 
+    wgc_stage_trace::record(frame_qpc, "interface_end");
     // Get underlying texture
     winrt::com_ptr<ID3D11Texture2D> frame_tex;
     if (FAILED(ia->GetInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<::IUnknown **>(frame_tex.put_void())))) {
@@ -1743,7 +1772,9 @@ private:
       return;
     }
 
+    wgc_stage_trace::record(frame_qpc, "texture_access_end");
     auto scratch_index = reserve_scratch_texture();
+    wgc_stage_trace::record(frame_qpc, "scratch_reserve_end");
     if (!scratch_index) {
       return;
     }
@@ -1753,15 +1784,21 @@ private:
       return;
     }
 
+    wgc_stage_trace::record(frame_qpc, "scratch_ensure_end");
     {
+      wgc_stage_trace::record(frame_qpc, "scratch_context_wait_start");
       std::lock_guard context_lock(_d3d_context_mutex);
+      wgc_stage_trace::record(frame_qpc, "scratch_context_acquired");
       _deps->d3d_context->CopyResource(_scratch_textures[*scratch_index].texture.get(), frame_tex.get());
+      wgc_stage_trace::record(frame_qpc, "scratch_copy_returned");
     }
 
     // From here on the delivery thread owns only the helper scratch texture, not
     // the Direct3D11CaptureFrame/WGC frame-pool buffer. The helper can wait for
     // the main process' shared keyed mutex without starving WGC FrameArrived.
+    wgc_stage_trace::record(frame_qpc, "frame_release_start");
     frame = nullptr;
+    wgc_stage_trace::record(frame_qpc, "frame_release_end");
 
     if (!enqueue_scratch_texture(*scratch_index, frame_qpc)) {
       return;
@@ -1844,11 +1881,15 @@ private:
     // GPU load makes that copy slow, waiting here must not block Sunshine from
     // acquiring the shared WGC texture.
     const auto context_wait_start = std::chrono::steady_clock::now();
+    wgc_stage_trace::record(frame_qpc, "delivery_context_wait_start");
     std::unique_lock context_lock(_d3d_context_mutex);
+    wgc_stage_trace::record(frame_qpc, "delivery_context_acquired");
     const auto context_wait = std::chrono::steady_clock::now() - context_wait_start;
 
     const auto mutex_wait_start = std::chrono::steady_clock::now();
+    wgc_stage_trace::record(frame_qpc, "shared_mutex_wait_start");
     HRESULT hr = _deps->resource_manager.get_keyed_mutex()->AcquireSync(0, 200);
+    wgc_stage_trace::record(frame_qpc, "shared_mutex_wait_end");
     const auto mutex_wait = std::chrono::steady_clock::now() - mutex_wait_start;
     if (hr == WAIT_TIMEOUT) {
       const auto slow_mutex_count = _slow_mutex_waits.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -1878,6 +1919,7 @@ private:
     // the same mutex before snapshotting this shared texture into a pool-owned frame.
     const auto copy_start = std::chrono::steady_clock::now();
     _deps->d3d_context->CopyResource(_deps->resource_manager.get_shared_texture().get(), frame_tex.get());
+    wgc_stage_trace::record(frame_qpc, "shared_copy_returned");
     const auto copy_submit = std::chrono::steady_clock::now() - copy_start;
 
     // Publish the metadata while still holding the shared keyed mutex so the
@@ -1893,10 +1935,13 @@ private:
     }
     const auto shared_mutex_hold = std::chrono::steady_clock::now() - shared_mutex_hold_start;
     context_lock.unlock();
+    wgc_stage_trace::record(frame_qpc, "delivery_locks_released");
 
     // Signal only after releasing the mutex so a woken consumer can acquire the
     // frame without waiting on the producer's normal release path.
+    wgc_stage_trace::record(frame_qpc, "signal_ready_start");
     _deps->resource_manager.signal_frame_ready();
+    wgc_stage_trace::record(frame_qpc, "signal_ready_end");
     _published_frames.fetch_add(1, std::memory_order_relaxed);
 
     const auto context_wait_ms = std::chrono::duration<double, std::milli>(context_wait).count();
