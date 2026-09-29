@@ -331,7 +331,10 @@ namespace platf::dxgi {
 
     wgc_stage_trace::capture("image_pool_wait_end");
     auto d3d_img = std::static_pointer_cast<img_d3d_t>(img);
-    if (complete_img(d3d_img.get(), false)) {
+    wgc_stage_trace::capture("image_setup_start");
+    const auto image_setup_result = complete_img(d3d_img.get(), false);
+    wgc_stage_trace::capture("image_setup_end");
+    if (image_setup_result) {
       return capture_e::error;
     }
 
@@ -378,14 +381,18 @@ namespace platf::dxgi {
     // The IPC texture is a single mutable helper-owned surface. Snapshot it into
     // this pool-owned texture so queued encoder frames remain stable.
     const auto copy_start = std::chrono::steady_clock::now();
+    wgc_stage_trace::capture_frame(frame_qpc, "host_copy_start");
     device_ctx->CopyResource(d3d_img->capture_texture.get(), src.get());
+    wgc_stage_trace::capture_frame(frame_qpc, "host_copy_end");
     const auto copy_submit = std::chrono::steady_clock::now() - copy_start;
     d3d_img->blank = false;
 
     // Release the shared IPC mutex immediately after queueing the copy. The
     // GPU work is fenced through the keyed-mutex / encoder pipeline, so the
     // helper is free to publish the next frame as soon as we drop this mutex.
+    wgc_stage_trace::capture_frame(frame_qpc, "host_shared_release_start");
     _ipc_session->release();
+    wgc_stage_trace::capture_frame(frame_qpc, "host_shared_release_end");
     _frame_locked = false;
 
     // The composition time; the send path refines it for RTP once the game's

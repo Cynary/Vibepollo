@@ -24,5 +24,9 @@ public:
  }
 };
 inline void record(uint64_t qpc,const char* stage,uint64_t callback_id=0,uint32_t call_index=0){static recorder r;r.add(qpc,stage,callback_id,call_index);}
-inline void capture(const char* stage){static recorder r(".capture.csv");r.add(0,stage);}
+// Only the helper writes .wgc.csv; all main-process capture stages share one recorder.
+inline recorder& capture_recorder(){static recorder r(".capture.csv");return r;}
+inline void capture(const char* stage){capture_recorder().add(0,stage);}
+inline void capture_frame(uint64_t qpc,const char* stage){capture_recorder().add(qpc,stage);}
+
 }
