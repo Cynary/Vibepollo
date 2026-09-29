@@ -116,15 +116,22 @@ int run_capture(DWORD pid, const wchar_t* hookPath, FrameConsumer consumer,
  FramePixelSamples pixelSamples;
  FrameTimingSamples timingSamples(pid);
   if(duration && duration->count() <= 0) throw std::runtime_error("capture duration must be positive");
- Mapping mainMap,discMap; wchar_t name[128]; GenerateSharedMemName(name,128,GetCurrentProcessId());mainMap.create(name,sizeof(SharedMemoryLayout));
+ // Resident hooks retain mappings while dormant. Keep this helper's ownership
+ // instead of trying to create the same named objects again after a focus change.
+ static Mapping mainMap,discMap;
+ static bool reusable=true;
+ if(!reusable)throw std::runtime_error("previous hook did not quiesce; keeping desktop capture");
+ wchar_t name[128];
+ if(!mainMap.p){GenerateSharedMemName(name,128,GetCurrentProcessId());mainMap.create(name,sizeof(SharedMemoryLayout));}
+ if(!discMap.p)discMap.create(SHARED_MEM_DISCOVERY,sizeof(DiscoveryInfo));
  shm=new(mainMap.p) SharedMemoryLayout{}; shm->SetHostPID(GetCurrentProcessId());
  initialize_passive_capture_config(shm->graphicsConfig);
  shm->runtimeState.captureRequested.store(!timestampOnly);shm->runtimeState.SetRuntimeFlag(kCaptureRuntimeFlagInjectVideoCaptureRequested,!timestampOnly);
  shm->fpsLimiter.SetCaptureFps(timestampOnly ? 0 : 240);shm->SetDebugLogging(true);shm->SetLogLevel(static_cast<LogLevel>(3));
  shm->structSize.store(sizeof(*shm));shm->abiSignature.store(SHARED_MEMORY_ABI_SIGNATURE);shm->SetMagic(SHARED_MEMORY_MAGIC);
- discMap.create(SHARED_MEM_DISCOVERY,sizeof(DiscoveryInfo));auto disc=new(discMap.p) DiscoveryInfo{};
+ auto disc=new(discMap.p) DiscoveryInfo{};
  struct StopCapture {
-   SharedMemoryLayout* s; DiscoveryInfo* d; DWORD pid; bool stopped=false;
+   SharedMemoryLayout* s; DiscoveryInfo* d; DWORD pid; bool& reusable; bool stopped=false;
    void shutdown() noexcept {
      if(stopped)return;
      stopped=true;
@@ -133,15 +140,18 @@ int run_capture(DWORD pid, const wchar_t* hookPath, FrameConsumer consumer,
      wchar_t eventName[128]; GenerateInjectDormantEventName(eventName,128,pid);
      Handle dormant{OpenEventW(SYNCHRONIZE,FALSE,eventName)};
      Handle process{OpenProcess(SYNCHRONIZE,FALSE,pid)};
+     reusable=false;
      if(dormant.v && process.v) {
        HANDLE events[]={dormant.v,process.v};
        DWORD result=WaitForMultipleObjects(2,events,FALSE,2000);
+       reusable=(result==WAIT_OBJECT_0 || result==WAIT_OBJECT_0+1);
        if(result==WAIT_TIMEOUT)fprintf(stderr,"CE capture shutdown: hook did not become dormant in 2s\n");
      }
+     if(process.v && WaitForSingleObject(process.v,0)==WAIT_OBJECT_0)reusable=true;
      d->SetMagic(0);
    }
    ~StopCapture(){shutdown();}
- } stop{shm,disc,pid};
+ } stop{shm,disc,pid,reusable};
  Handle nameProcess{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,FALSE,pid)};
  wchar_t exePath[32768];DWORD pathLength=32768;
  if(!nameProcess.v||!QueryFullProcessImageNameW(nameProcess.v,0,exePath,&pathLength))throw std::runtime_error("target name");
@@ -157,6 +167,11 @@ int run_capture(DWORD pid, const wchar_t* hookPath, FrameConsumer consumer,
  GenerateInjectReactivateEventName(name,128,pid);
  Handle resident{OpenEventW(EVENT_MODIFY_STATE,FALSE,name)};
  if(resident.v) {
+   // A previous generation's dormant acknowledgment must not satisfy shutdown
+   // while this reactivation is still being processed by the hook thread.
+   wchar_t dormantName[128];GenerateInjectDormantEventName(dormantName,128,pid);
+   Handle dormantAck{OpenEventW(EVENT_MODIFY_STATE,FALSE,dormantName)};
+   if(!dormantAck.v || !ResetEvent(dormantAck.v))throw std::runtime_error("reset dormant acknowledgment");
    if(!SetEvent(resident.v)) throw std::runtime_error("resident hook reactivation");
  } else {
    if(GetLastError()!=ERROR_FILE_NOT_FOUND) throw std::runtime_error("hook lifecycle event access");

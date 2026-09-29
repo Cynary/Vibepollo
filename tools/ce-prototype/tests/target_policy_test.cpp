@@ -4,6 +4,13 @@
 #include <cassert>
 
 int main() {
+  assert(direct_capture::covers_monitor(0, 0, 3840, 2160, 0, 0, 3840, 2160));
+  assert(direct_capture::covers_monitor(-3840, 0, 0, 2160, -3840, 0, 0, 2160));
+  assert(direct_capture::covers_monitor(1, 1, 3839, 2159, 0, 0, 3840, 2160));
+  assert(!direct_capture::covers_monitor(0, 30, 3840, 2120, 0, 0, 3840, 2160));
+  assert(!direct_capture::covers_monitor(0, 0, 7680, 2160, 0, 0, 3840, 2160));
+  assert(!direct_capture::covers_monitor(0, 0, 1920, 1080, 0, 0, 3840, 2160));
+
   using namespace direct_capture;
   assert(conventional_game_root(L"e:\\steamapps\\common\\new game\\bin\\game.exe") == L"e:\\steamapps\\common\\new game");
   assert(conventional_game_root(L"c:\\xboxgames\\another game\\content\\game.exe") == L"c:\\xboxgames\\another game");

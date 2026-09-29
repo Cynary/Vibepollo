@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <cwctype>
+#include <cstdlib>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -46,6 +47,14 @@ namespace direct_capture {
       start = end + 1;
     }
     return paths;
+  }
+
+  inline bool covers_monitor(long left, long top, long right, long bottom,
+                             long monitor_left, long monitor_top, long monitor_right, long monitor_bottom) {
+    // A small rounding tolerance accommodates DPI conversion without accepting
+    // a taskbar/titlebar gap, a spanning window, or an oversized background surface.
+    return std::abs(left - monitor_left) <= 2 && std::abs(top - monitor_top) <= 2 &&
+           std::abs(right - monitor_right) <= 2 && std::abs(bottom - monitor_bottom) <= 2;
   }
 
   inline bool stalled(unsigned count, unsigned long long now, unsigned long long started, unsigned long long last_frame) {

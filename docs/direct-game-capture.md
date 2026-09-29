@@ -6,18 +6,15 @@ Direct capture takes a game's frame before Windows desktop composition. It can r
 
 In Configuration, enable **Direct game capture**, save, and restart Vibepollo with the stream closed. Then launch games normally, including through MoonDeck, Steam, Epic or Ubisoft Connect. You do not need to enter each game's executable or change its launch command.
 
-Vibepollo finds the game window on the streamed display. It recognizes installed Steam, Epic, Ubisoft and Xbox game locations, common game-engine windows, and foreground fullscreen graphics applications. The launcher can already be running, and the game does not have to be a child process of Vibepollo.
+Vibepollo follows the **foreground fullscreen window on the streamed display**. It never searches behind that window for another game. Borderless and exclusive fullscreen windows qualify; ordinary maximized windows with a title bar or taskbar gap do not. Games can already be running or start through any launcher.
 
-Two optional settings let you adjust discovery:
+When focus moves to another eligible fullscreen application, direct capture follows it. When you switch to the desktop or a windowed application, capture uses WGC. WGC also covers the transition until the new target produces a frame. Returning to the game reactivates direct capture without reconnecting the stream.
 
-- **Additional game executables (optional)**: full paths for unusual applications that automatic discovery misses.
-- **Always use WGC for these games**: full paths for games you want to keep on WGC.
-
-Separate paths with semicolons. These lists accept up to 16 paths each; they do not limit the number of games automatic discovery supports.
+**Always use WGC for these games** optionally excludes executable paths, separated by semicolons (up to 16). No inclusion list is required. The former additional-executables setting is retained only for configuration compatibility and no longer changes selection.
 
 Before attaching, Vibepollo checks for known anti-cheat services, game-directory markers and known incompatible titles. Detected protection keeps the game on WGC. These checks cannot establish compatibility with every anti-cheat system; use the exclusion setting for games whose rules prohibit capture hooks. Enabling automatic capture does not make an unsigned hook approved by a game's anti-cheat provider.
 
-WGC handles the desktop, excluded applications, missing hooks, and failed direct capture. When the game exits, capture returns to WGC. A game that stops producing frames for five seconds also returns to WGC; reconnect the stream to retry that game. Initial hook setup has a separate 30-second frame timeout.
+WGC handles the desktop, excluded applications, missing hooks, and failed direct capture. When the game exits, capture follows the new foreground window. A game that stops producing frames for five seconds returns to WGC; a failed target is not repeatedly injected during the same stream. Reconnect the stream to retry it. Normal focus changes are not failures and allow immediate reactivation. Initial hook setup has a separate 30-second frame timeout.
 
 Disable **Direct game capture** and restart Vibepollo to return to normal capture. Resolution, HDR, encoder, virtual-display, and controller settings are unchanged. Direct capture uses the WGC backend for fallback even if another backend was selected.
 
@@ -50,3 +47,9 @@ The Windows host, helper, launcher and both web interfaces built successfully. T
 With the optional executable list empty, an already-running Overcooked 2 was selected and captured directly, then reconnected without restarting the game. Alan Wake Remastered launched through Epic was also selected automatically and delivered direct frames. Avatar: Frontiers of Pandora launched through Ubisoft Connect also delivered direct frames without an executable entry. Late-attachment testing exposed circular hook chains with other overlays; the bundled hook fixes resize interception and adds verified x86 body interception instead of requiring per-game launch wrappers.
 
 Stellar Blade was also discovered with an empty list and transitioned from SDR to 4K HDR. The exclusion check kept Overcooked on WGC with no hook module loaded; clearing the exclusion allowed late attachment to the same process and delivered over 6,000 direct frames. Native hook builds and unit tests passed, and static analysis stayed within the project's existing warning baseline.
+
+### Fullscreen focus switching
+
+The 28 September update replaces background-window discovery with foreground fullscreen selection. Live testing switched repeatedly between an already-running Overcooked 2 (D3D11 SDR) and a separate D3D12 4K HDR application, with direct frames confirmed from both processes in the same stream. Minimizing the game returned to WGC, and restoring it resumed direct capture. Fullscreen geometry tests cover negative monitor coordinates, rounding, title-bar/taskbar gaps and spanning windows.
+
+The helper retains its shared-memory mappings across focus changes because dormant hooks still hold references to them. It waits for the previous hook's dormant acknowledgment before resetting those mappings. If that acknowledgment fails, it keeps WGC rather than reusing resources an old producer might still access. A dormant hook stays loaded; unloading it could invalidate references retained by the game or other overlays. This is not a way to undo an anti-cheat rejection.

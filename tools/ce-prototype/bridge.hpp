@@ -148,7 +148,8 @@ static int run_ce_bridge_shared(DWORD target,const wchar_t* hook,AsyncNamedPipe&
   CeOutput output(resources);
   bool publishing=false;
   return run_capture(target,hook,[&](auto* dev,auto* ctx,auto* texture,bool hdr,int64_t timestamp){
+    if(!alive())return false;
     if(!publishing){takeOutput();publishing=true;}
     return output.publish(dev,ctx,texture,hdr,timestamp,pipe);
-  },std::move(alive),std::nullopt,device);
+  },alive,std::nullopt,device);
 }
