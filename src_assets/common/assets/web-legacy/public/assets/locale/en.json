@@ -403,12 +403,10 @@
     "output_name_default": "Primary display (default)"
   },
   "config": {
-    "direct_capture_exclusions_desc": "Optional full EXE paths, separated by semicolons. These games are never injected, even if automatically recognized or listed above.",
+    "direct_capture_exclusions_desc": "Optional full EXE paths, separated by semicolons. These games are never injected.",
     "direct_capture_exclusions": "Always use WGC for these games",
     "direct_capture_enabled": "Direct game capture",
-    "direct_capture_enabled_desc": "Automatically capture game windows on the streamed display before desktop composition. Steam, Epic and Ubisoft installs are discovered automatically. Known protected games use WGC. Anti-cheat detection is best-effort and cannot guarantee compatibility with unknown protection.",
-    "direct_capture_executables": "Additional game executables (optional)",
-    "direct_capture_executables_desc": "Normally leave empty. Add full EXE paths only for standalone games that are not recognized automatically. Separate paths with semicolons.",
+    "direct_capture_enabled_desc": "Capture the focused fullscreen application on the streamed display before desktop composition. Capture follows focus between fullscreen apps and uses WGC for the desktop, windowed apps and detected incompatible games. Protection checks cannot guarantee compatibility with every anti-cheat system.",
     "amf": {
       "quality": "AMF Usage",
       "rate_control": "AMF Rate Control"

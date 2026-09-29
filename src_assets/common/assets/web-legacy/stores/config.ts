@@ -254,7 +254,6 @@ const defaultGroups = [
       ignore_encoder_probe_failure: 'disabled',
       capture: '',
       direct_capture_enabled: false,
-      direct_capture_executables: '',
       direct_capture_exclusions: '',
       encoder: '',
     },

@@ -1767,15 +1767,11 @@
         },
         "direct_capture_enabled": {
           "label": "Direct game capture",
-          "description": "Automatically capture game windows on the streamed display before desktop composition. Steam, Epic and Ubisoft installs are discovered automatically. Known protected games use WGC. Anti-cheat detection is best-effort and cannot guarantee compatibility with unknown protection."
-        },
-        "direct_capture_executables": {
-          "label": "Additional game executables (optional)",
-          "description": "Normally leave empty. Add full EXE paths only for standalone games that are not recognized automatically. Separate paths with semicolons."
+          "description": "Capture the focused fullscreen application on the streamed display before desktop composition. Capture follows focus between fullscreen apps and uses WGC for the desktop, windowed apps and detected incompatible games. Protection checks cannot guarantee compatibility with every anti-cheat system."
         },
         "direct_capture_exclusions": {
           "label": "Always use WGC for these games",
-          "description": "Optional full EXE paths, separated by semicolons. These games are never injected, even if automatically recognized or listed above."
+          "description": "Optional full EXE paths, separated by semicolons. These games are never injected."
         }
       },
       "integrations": {

@@ -4,10 +4,9 @@
 
 #include <set>
 
-// Select the game's window, not its launcher's parent PID. This also handles
-// games started before capture, detached launches, and already-running launchers.
+// Direct capture follows the foreground fullscreen window on the streamed monitor.
+// Background games never qualify, regardless of installation path or window class.
 class CeTargetSelector {
-  std::vector<std::wstring> extra_paths;
   std::vector<std::wstring> excluded_paths;
   HMONITOR monitor = nullptr;
   bool active = false;
@@ -15,12 +14,23 @@ class CeTargetSelector {
   direct_capture::automatic_games games;
   std::set<std::pair<DWORD, ULONGLONG>> attempted;
 
-  static BOOL CALLBACK collect(HWND window, LPARAM data) {
-    auto &windows = *reinterpret_cast<std::vector<HWND> *>(data);
-    if (IsWindowVisible(window) && !IsIconic(window)) {
-      windows.push_back(window);
+  HWND selected_window = nullptr;
+  std::pair<DWORD, ULONGLONG> selected_identity {};
+
+  bool focused_fullscreen(HWND window) const {
+    if (!window || window != GetForegroundWindow() || !IsWindowVisible(window) || IsIconic(window) ||
+        MonitorFromWindow(window, MONITOR_DEFAULTTONULL) != monitor) {
+      return false;
     }
-    return TRUE;
+    // Use the client area: a maximized window's border must not qualify it as fullscreen.
+    RECT client {};
+    MONITORINFO info {sizeof(MONITORINFO)};
+    POINT origin {};
+    if (!GetClientRect(window, &client) || !ClientToScreen(window, &origin) || !GetMonitorInfoW(monitor, &info)) {
+      return false;
+    }
+    return direct_capture::covers_monitor(origin.x, origin.y, origin.x + client.right, origin.y + client.bottom,
+                                         info.rcMonitor.left, info.rcMonitor.top, info.rcMonitor.right, info.rcMonitor.bottom);
   }
 
   static bool graphics_process(DWORD pid) {
@@ -37,24 +47,33 @@ class CeTargetSelector {
   }
 
 public:
-  explicit CeTargetSelector(bool enabled, HMONITOR capture_monitor, std::wstring extras = {}, std::wstring exclusions = {}):
-      extra_paths(direct_capture::parse_paths(extras)),
+  explicit CeTargetSelector(bool enabled, HMONITOR capture_monitor, std::wstring /* legacy_extras */ = {}, std::wstring exclusions = {}):
       excluded_paths(direct_capture::parse_paths(exclusions)),
       monitor(capture_monitor),
       active(enabled) {}
+
+  bool still_selected(DWORD pid) const {
+    DWORD current_pid = 0;
+    GetWindowThreadProcessId(selected_window, &current_pid);
+    return current_pid == pid && focused_fullscreen(selected_window);
+  }
+
+  void finished(bool failed) {
+    if (failed) {
+      attempted.insert(selected_identity);
+    }
+    selected_window = nullptr;
+    next_scan = 0;
+  }
 
   DWORD next() {
     if (!active || GetTickCount64() < next_scan) {
       return 0;
     }
     next_scan = GetTickCount64() + 250;
-    std::vector<HWND> windows;
-    if (auto foreground = GetForegroundWindow()) {
-      windows.push_back(foreground);
-    }
-    EnumWindows(collect, reinterpret_cast<LPARAM>(&windows));
-    for (auto window : windows) {
-      if (!IsWindowVisible(window) || IsIconic(window) || MonitorFromWindow(window, MONITOR_DEFAULTTONULL) != monitor) {
+    // One candidate only. Never walk the Z-order looking behind the foreground app.
+    for (auto window : {GetForegroundWindow()}) {
+      if (!focused_fullscreen(window)) {
         continue;
       }
       RECT rect {};
@@ -86,21 +105,9 @@ public:
         continue;
       }
       auto root = games.game_root(path);
-      wchar_t class_name[256] {};
-      GetClassNameW(window, class_name, std::size(class_name));
-      const bool extra = std::find(extra_paths.begin(), extra_paths.end(), path) != extra_paths.end();
-      RECT bounds {};
-      MONITORINFO monitor_info {sizeof(MONITORINFO)};
-      const bool fullscreen = window == GetForegroundWindow() && GetWindowRect(window, &bounds) &&
-                              GetMonitorInfoW(monitor, &monitor_info) && bounds.left <= monitor_info.rcMonitor.left + 2 &&
-                              bounds.top <= monitor_info.rcMonitor.top + 2 && bounds.right >= monitor_info.rcMonitor.right - 2 &&
-                              bounds.bottom >= monitor_info.rcMonitor.bottom - 2;
       wchar_t windows_dir[MAX_PATH] {};
       GetWindowsDirectoryW(windows_dir, std::size(windows_dir));
       if (direct_capture::under(path, direct_capture::normalized(windows_dir))) {
-        continue;
-      }
-      if (root.empty() && !extra && !fullscreen && !direct_capture::game_window_class(direct_capture::normalized(class_name))) {
         continue;
       }
       if (root.empty()) {
@@ -134,7 +141,8 @@ public:
       if (!graphics_process(pid)) {
         continue;
       }
-      attempted.insert(identity);
+      selected_window = window;
+      selected_identity = identity;
       BOOST_LOG(info) << "Automatically selected direct capture game: " << std::filesystem::path(path).string() << ", PID " << pid;
       return pid;
     }

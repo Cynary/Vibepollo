@@ -2587,6 +2587,7 @@ int main(int argc, char *argv[]) {
         BOOST_LOG(error)<<"Bundled direct capture hook disappeared; keeping desktop capture";
       } else {
         BOOST_LOG(info)<<"Switching desktop capture to direct game capture, PID "<<target;
+        bool focus_changed=false;
         int result=run_ce_bridge_shared(target,direct_hook.c_str(),*pipe_shared,shared_resource_manager,d3d11_manager.get_device().get(),
           [&] {
             // Join delivery and drain callbacks before CE writes to the same
@@ -2595,9 +2596,14 @@ int main(int argc, char *argv[]) {
           },[&] {
             process_window_messages(shutdown_requested);
             poll_pending_secure_desktop_transition();
+            if (!direct_target.still_selected(target)) {
+              focus_changed=true;
+              return false;
+            }
             return pipe_shared->is_connected() && !shutdown_requested && !g_capture_item_closed.load(std::memory_order_acquire);
           });
-        BOOST_LOG(info)<<"Direct capture ended, result="<<result;
+        direct_target.finished(result != 0 && !focus_changed);
+        BOOST_LOG(info)<<"Direct capture ended, result="<<result<<", focus_changed="<<focus_changed;
         if(!pipe_shared->is_connected() || g_capture_item_closed.load(std::memory_order_acquire))break;
         if(!wgc_capture_manager) {
           wgc_capture_manager=make_wgc();
