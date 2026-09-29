@@ -438,6 +438,10 @@ const shouldShowSoftware = computed(() => showAll() || props.currentTab === 'sw'
   <div class="config-page space-y-6">
     <div class="space-y-4">
       <ConfigFieldRenderer setting-key="capture" v-model="config.capture" />
+      <template v-if="platform === 'windows'">
+        <ConfigFieldRenderer setting-key="direct_capture_enabled" kind="switch" v-model="config.direct_capture_enabled" />
+        <ConfigFieldRenderer setting-key="direct_capture_executables" kind="input" monospace v-model="config.direct_capture_executables" />
+      </template>
       <ConfigFieldRenderer setting-key="encoder" v-model="config.encoder" />
 
       <section

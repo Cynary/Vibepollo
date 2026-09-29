@@ -253,6 +253,8 @@ const defaultGroups = [
       legacy_ordering: 'disabled',
       ignore_encoder_probe_failure: 'disabled',
       capture: '',
+      direct_capture_enabled: false,
+      direct_capture_executables: '',
       encoder: '',
     },
   },

@@ -16,6 +16,7 @@
 #include <optional>
 #include "common/shared_defs.h"
 #include "passive_config.hpp"
+#include "target_policy.hpp"
 using Microsoft::WRL::ComPtr;
 uint32_t GetCurrentBuildNumber() noexcept { return 6772; }
 const char* GetCaptureVersion() noexcept { return "probe"; }
@@ -182,15 +183,15 @@ int run_capture(DWORD pid, const wchar_t* hookPath, FrameConsumer consumer,
  struct QuiesceBeforeResources { StopCapture& stop; ~QuiesceBeforeResources(){stop.shutdown();} } quiesce{stop};
  LARGE_INTEGER freq; QueryPerformanceFrequency(&freq);
  const auto started = std::chrono::steady_clock::now();
- unsigned count=0; ULONGLONG diagnosticAt=GetTickCount64()+1000;
+ unsigned count=0; const auto startedTick=GetTickCount64(); auto lastFrameTick=startedTick; ULONGLONG diagnosticAt=startedTick+1000;
  puts("frame,published_qpc,observed_qpc,ready_qpc,width,height,dxgi_format,hdr,final_output");fflush(stdout);
  // Streaming ends with the session or target process, never an arbitrary probe timeout.
  while(alive() && (!duration || std::chrono::steady_clock::now()-started < *duration) &&
        WaitForSingleObject(target.v,0)==WAIT_TIMEOUT) {
  auto &ring=shm->frameRing;auto r=ring.load_read_index_acquire();auto w=ring.load_write_index_acquire();
  if(r==w){
- if(count==0 && std::chrono::steady_clock::now()-started>=std::chrono::seconds(30))
-   throw std::runtime_error("direct capture produced no frame within 30 seconds");
+ if(direct_capture::stalled(count,GetTickCount64(),startedTick,lastFrameTick))
+   throw std::runtime_error("direct capture stalled; returning to desktop capture");
 #ifdef CE_EMBEDDED
  if(GetTickCount64()>=diagnosticAt){BOOST_LOG(info)<<"CE waiting: source="<<shm->GetSourcePid()<<" format="<<shm->GetFormat()<<" write="<<w<<" read="<<r<<" abi="<<SHARED_MEMORY_ABI_SIGNATURE;diagnosticAt=GetTickCount64()+5000;}
 #endif
@@ -254,6 +255,7 @@ int run_capture(DWORD pid, const wchar_t* hookPath, FrameConsumer consumer,
    HRESULT hr=mutex->AcquireSync(1,2000);
    if(hr!=S_OK)throw std::runtime_error("keyed mutex timeout/abandoned");
  }
+ lastFrameTick=GetTickCount64();
  QueryPerformanceCounter(&done); D3D11_TEXTURE2D_DESC desc;textures[idx]->GetDesc(&desc);
  // Readback is validation only, on the first three frames; never part of a streaming path.
  if(count<3 && patternStart.v && !consumer) {

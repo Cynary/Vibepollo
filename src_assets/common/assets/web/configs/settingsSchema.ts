@@ -705,6 +705,8 @@ export const settingsCategories: SettingsCategory[] = [
         fields: [
           select('capture', captureOptions),
           boolean('wgc_pacing_smoothing', { platform: 'windows' }),
+          boolean('direct_capture_enabled', { platform: 'windows' }),
+          text('direct_capture_executables', { platform: 'windows', monospace: true, stacked: true }),
         ],
       },
       {
@@ -817,6 +819,8 @@ export const settingsCategories: SettingsCategory[] = [
           select('encoder', [option('', '_common.auto')]),
           boolean('ignore_encoder_probe_failure'),
           boolean('wgc_pacing_smoothing', { platform: 'windows' }),
+          boolean('direct_capture_enabled', { platform: 'windows' }),
+          text('direct_capture_executables', { platform: 'windows', monospace: true, stacked: true }),
         ],
       },
       {
@@ -1079,6 +1083,8 @@ export const settingsDefaults: Record<string, unknown> = {
   qsv_preset: 'medium',
   amd_quality: 'balanced',
   wgc_pacing_smoothing: true,
+  direct_capture_enabled: false,
+  direct_capture_executables: '',
   hevc_mode: 0,
   av1_mode: 0,
   pyrowave: true,

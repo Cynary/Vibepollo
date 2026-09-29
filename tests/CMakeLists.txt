@@ -973,3 +973,16 @@ if(TARGET pyrowave-linux)
     add_test(NAME pyrowave_linux_gpu COMMAND test_pyrowave_linux_gpu)
     set_tests_properties(pyrowave_linux_gpu PROPERTIES SKIP_RETURN_CODE 77 LABELS "integration;gpu")
 endif()
+# Standalone policy checks: no Windows runtime or game injection required.
+sunshine_add_test_target(
+    NAME test_fast_direct_capture_policy
+    CATEGORY fast
+    TEST_SOURCES "${SUNSHINE_TEST_REPOSITORY_ROOT}/tools/ce-prototype/tests/target_policy_test.cpp"
+)
+if(TARGET test_fast_direct_capture_policy)
+    if(MSVC)
+        target_compile_options(test_fast_direct_capture_policy PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(test_fast_direct_capture_policy PRIVATE -UNDEBUG)
+    endif()
+endif()

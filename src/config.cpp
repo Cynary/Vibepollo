@@ -1883,6 +1883,11 @@ namespace config {
     int_between_f(vars, "rtx_hdr_peak_brightness", video.rtx_hdr.peak_brightness, {400, 2000});
 
     string_f(vars, "capture", video.capture);
+    bool_f(vars, "direct_capture_enabled", video.direct_capture_enabled);
+    string_f(vars, "direct_capture_executables", video.direct_capture_executables);
+#ifdef _WIN32
+    if (video.direct_capture_enabled) video.capture = "wgc";
+#endif
     bool_f(vars, "wgc_pacing_smoothing", video.wgc_pacing_smoothing);
     string_f(vars, "encoder", video.encoder);
     const auto configured_encoder = video.encoder;

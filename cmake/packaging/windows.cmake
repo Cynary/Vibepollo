@@ -68,6 +68,9 @@ endif()
 install(TARGETS dxgi-info RUNTIME DESTINATION "tools" COMPONENT dxgi)
 install(TARGETS audio-info RUNTIME DESTINATION "tools" COMPONENT audio)
 
+# Direct capture hooks are an optional, versioned build input.
+include("${CMAKE_SOURCE_DIR}/cmake/packaging/windows_capture_engine.cmake")
+
 # Helpers and tools
 # - Playnite launcher helper used for Playnite-managed app launches
 # - WGC capture helper used by the WGC display backend
