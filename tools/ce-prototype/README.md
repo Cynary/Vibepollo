@@ -1,3 +1,5 @@
+> For normal use, see [Direct game capture](../../docs/direct-game-capture.md). The environment-based setup below describes the earlier standalone experiments.
+
 # Direct game capture prototype
 
 This replaces desktop capture with a game's shared GPU textures while keeping the

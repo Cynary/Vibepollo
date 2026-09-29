@@ -161,3 +161,7 @@ certificate by the [SignPath Foundation](https://signpath.org?utm_source=foundat
   operator; it does not transmit user or runtime data to SignPath. Separately, SignPath's GitHub integration receives
   the build artifacts, signing-request details, and GitHub-provided build-origin metadata needed to sign official
   releases.
+
+## Direct game capture
+
+This fork includes opt-in capture before Windows desktop composition, with WGC fallback. See [setup, compatibility and build instructions](docs/direct-game-capture.md).

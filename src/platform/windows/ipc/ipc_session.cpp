@@ -342,6 +342,13 @@ namespace platf::dxgi {
     config_data.initial_frame_buffer_size = wgc_initial_frame_buffer_size();
     config_data.max_frame_buffer_size = wgc_max_frame_buffer_size(_config);
     config_data.activity_admission_fps = _activity_admission_fps.load(std::memory_order_relaxed);
+    const auto direct_paths = platf::from_utf8(config::video.direct_capture_executables);
+    config_data.direct_capture_enabled = config::video.direct_capture_enabled ? 1u : 0u;
+    if (config::video.direct_capture_enabled && direct_paths.size() < std::size(config_data.direct_capture_executables)) {
+      std::copy(direct_paths.begin(), direct_paths.end(), config_data.direct_capture_executables);
+    } else if (config::video.direct_capture_enabled) {
+      BOOST_LOG(error) << "Direct capture executable list is too long; using desktop capture";
+    }
 
     // Convert display_name (std::string) to wchar_t[32]
     if (!_display_name.empty()) {

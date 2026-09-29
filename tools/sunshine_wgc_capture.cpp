@@ -2400,18 +2400,6 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // Deliberately opt-in: normal WGC remains unchanged when this is absent.
-  if (const char* selected = std::getenv("MOONMACHINE_CE_TARGET_PID")) {
-    char* end = nullptr;
-    const unsigned long target = std::strtoul(selected, &end, 10);
-    wchar_t hook[32768];
-    if (!target || *end || !GetEnvironmentVariableW(L"MOONMACHINE_CE_HOOK", hook, 32768)) {
-      BOOST_LOG(error) << "Invalid explicit CaptureEngine prototype configuration";
-      return 1;
-    }
-    return run_ce_bridge(static_cast<DWORD>(target), hook, *pipe_shared);
-  }
-
   // Monitor management
   DisplayManager display_manager;
   if (!display_manager.select_monitor(g_config)) {
@@ -2519,7 +2507,25 @@ int main(int argc, char *argv[]) {
 
   // Create dependencies for capture manager
   // Create WGC capture manager
-  CeTargetSelector direct_target;
+  std::wstring direct_hook;
+  std::wstring direct_paths;
+  if (g_config.direct_capture_enabled) {
+    wchar_t module[32768]{};
+    const auto length=GetModuleFileNameW(nullptr,module,std::size(module));
+    if(length && length<std::size(module)) {
+      direct_hook=(std::filesystem::path(module).parent_path()/L"capture-engine"/L"capture_hook_x64.dll").wstring();
+      std::error_code hook_error;
+      if(std::filesystem::is_regular_file(direct_hook,hook_error)) {
+        const auto end=std::find(std::begin(g_config.direct_capture_executables),std::end(g_config.direct_capture_executables),L'\0');
+        if(end!=std::end(g_config.direct_capture_executables)) {
+          direct_paths.assign(std::begin(g_config.direct_capture_executables),end);
+          try {direct_capture::parse_paths(direct_paths);}
+          catch(const std::exception& e){BOOST_LOG(error)<<"Direct capture disabled: "<<e.what();direct_paths.clear();}
+        }
+      } else { BOOST_LOG(warning)<<"Direct capture hook is not bundled; using desktop capture"; }
+    }
+  }
+  CeTargetSelector direct_target(direct_paths);
   auto make_wgc = [&] {
     return std::make_unique<WgcCaptureManager>(capture_format,display_manager.get_width(),display_manager.get_height(),
       WgcCaptureDependencies{d3d11_manager.get_winrt_device(),item,shared_resource_manager,d3d11_manager.get_context()});
@@ -2545,7 +2551,7 @@ int main(int argc, char *argv[]) {
 
   wgc_capture_manager->start_capture();
 
-  CeStreamReady direct_ready(direct_target.enabled());
+  CeStreamReady direct_ready(g_config.direct_capture_enabled != 0);
 
   // Main message loop
   bool shutdown_requested = false;
@@ -2558,13 +2564,12 @@ int main(int argc, char *argv[]) {
     poll_pending_secure_desktop_transition();
 
     if(DWORD target=direct_target.next()) {
-      wchar_t hook[32768];
-      DWORD length=GetEnvironmentVariableW(L"MOONMACHINE_CE_HOOK",hook,32768);
-      if(!length || length>=32768) {
-        BOOST_LOG(error)<<"Direct capture target ignored: hook path missing or too long";
+      std::error_code hook_error;
+      if (!std::filesystem::is_regular_file(direct_hook,hook_error)) {
+        BOOST_LOG(error)<<"Bundled direct capture hook disappeared; keeping desktop capture";
       } else {
         BOOST_LOG(info)<<"Switching desktop capture to direct game capture, PID "<<target;
-        int result=run_ce_bridge_shared(target,hook,*pipe_shared,shared_resource_manager,d3d11_manager.get_device().get(),
+        int result=run_ce_bridge_shared(target,direct_hook.c_str(),*pipe_shared,shared_resource_manager,d3d11_manager.get_device().get(),
           [&] {
             // Join delivery and drain callbacks before CE writes to the same
             // context/texture. Until then, keep the loading screen visible.

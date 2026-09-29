@@ -935,3 +935,17 @@ endif()
 
 add_test(NAME build_version_contract
     COMMAND "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_LIST_DIR}/cmake/BuildVersionContract.cmake")
+
+# Standalone policy checks: no Windows runtime or game injection required.
+sunshine_add_test_target(
+    NAME test_fast_direct_capture_policy
+    CATEGORY fast
+    TEST_SOURCES "${SUNSHINE_TEST_REPOSITORY_ROOT}/tools/ce-prototype/tests/target_policy_test.cpp"
+)
+if(TARGET test_fast_direct_capture_policy)
+    if(MSVC)
+        target_compile_options(test_fast_direct_capture_policy PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(test_fast_direct_capture_policy PRIVATE -UNDEBUG)
+    endif()
+endif()

@@ -1772,6 +1772,14 @@
         "wgc_pacing_smoothing": {
           "description": "Reduce visible pacing changes when Windows Graphics Capture is active.",
           "label": "Smooth Windows capture cadence"
+        },
+        "direct_capture_enabled": {
+          "label": "Direct game capture",
+          "description": "Capture listed games before Windows desktop composition. Uses Windows Graphics Capture for the desktop and unsupported games. Requires the bundled CaptureEngine hook. Leave games with anti-cheat off the list; injected capture may be blocked."
+        },
+        "direct_capture_executables": {
+          "label": "Direct capture game executables",
+          "description": "Full paths to the actual game EXE files, separated by semicolons (up to 16). Launchers and wildcard names are not supported. Restart an already-running game after enabling this."
         }
       },
       "integrations": {

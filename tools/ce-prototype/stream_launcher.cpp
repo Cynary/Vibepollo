@@ -1,4 +1,4 @@
-// Prototype wrapper for MoonDeckStream: publish Buddy's heartbeat only once
+// Delay application startup (including Buddy's heartbeat) until
 // the capture helper is ready to observe the game's creation. No fixed delay.
 #include <windows.h>
 #include <string>

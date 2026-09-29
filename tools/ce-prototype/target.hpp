@@ -1,34 +1,35 @@
 #pragma once
 #include <set>
+#include "target_policy.hpp"
 
-// Opt-in prototype target selection. Match a complete executable path and never
+// Opt-in target selection. Match a complete executable path and never
 // inject an arbitrary foreground window or an already-running, unhooked game.
 class CeTargetSelector {
-  std::wstring path;
+  std::vector<std::wstring> paths;
   FILETIME started{};
   ULONGLONG nextScan=0;
   std::set<std::pair<DWORD,ULONGLONG>> attempted;
  public:
-  CeTargetSelector() {
+  explicit CeTargetSelector(std::wstring configured = {}) {
     GetSystemTimeAsFileTime(&started);
-    wchar_t value[32768];
-    DWORD n=GetEnvironmentVariableW(L"MOONMACHINE_CE_TARGET_PATH",value,32768);
-    if(n>=32768)throw std::runtime_error("direct capture target path too long");
-    if(n)path=value;
+    paths=direct_capture::parse_paths(configured);
   }
-  bool enabled()const{return !path.empty();}
+  bool enabled()const{return !paths.empty();}
   DWORD next() {
     if(!enabled() || GetTickCount64()<nextScan)return 0;
     nextScan=GetTickCount64()+10;
     Handle snapshot{CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS,0)};
     PROCESSENTRY32W entry{};entry.dwSize=sizeof(entry);
     for(BOOL ok=Process32FirstW(snapshot.v,&entry);ok;ok=Process32NextW(snapshot.v,&entry)) {
-      const wchar_t* filename=wcsrchr(path.c_str(),L'\\');filename=filename?filename+1:path.c_str();
-      if(_wcsicmp(entry.szExeFile,filename))continue;
+      const auto selected=std::find_if(paths.begin(),paths.end(),[&](const std::wstring& path){
+        const auto filename=path.substr(path.find_last_of(L'\\')+1);
+        return _wcsicmp(entry.szExeFile,filename.c_str())==0;
+      });
+      if(selected==paths.end())continue;
       Handle process{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,FALSE,entry.th32ProcessID)};
       if(!process.v)continue;
       wchar_t actual[32768];DWORD length=32768;FILETIME creation,exit,kernel,user;
-      if(!QueryFullProcessImageNameW(process.v,0,actual,&length) || _wcsicmp(actual,path.c_str()) ||
+      if(!QueryFullProcessImageNameW(process.v,0,actual,&length) || std::none_of(paths.begin(),paths.end(),[&](const std::wstring& path){return _wcsicmp(actual,path.c_str())==0;}) ||
          !GetProcessTimes(process.v,&creation,&exit,&kernel,&user))continue;
       const auto identity=std::make_pair(entry.th32ProcessID,(ULONGLONG(creation.dwHighDateTime)<<32)|creation.dwLowDateTime);
       if(attempted.count(identity))continue;
