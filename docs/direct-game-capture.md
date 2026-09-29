@@ -12,7 +12,7 @@ When focus moves to another eligible fullscreen application, direct capture foll
 
 **Always use WGC for these games** optionally excludes executable paths, separated by semicolons (up to 16). No inclusion list is required. The former additional-executables setting is retained only for configuration compatibility and no longer changes selection.
 
-Before attaching, Vibepollo checks for known anti-cheat services, game-directory markers and known incompatible titles. Detected protection keeps the game on WGC. These checks cannot establish compatibility with every anti-cheat system; use the exclusion setting for games whose rules prohibit capture hooks. Enabling automatic capture does not make an unsigned hook approved by a game's anti-cheat provider.
+Before attaching, Vibepollo verifies the permissions actually granted by Windows. Some protected games return a process handle but remove the rights needed by capture; those stay on WGC immediately. If the game instead rejects loading the hook DLL, WGC remains active and that process is not retried for the rest of the helper session. The check uses process identity (PID and creation time), so a new process can be tested again. Explicit exclusions remain available. Passing the permission check is not approval from an anti-cheat provider, and a failed load does not by itself identify which protection blocked it.
 
 WGC handles the desktop, excluded applications, missing hooks, and failed direct capture. When the game exits, capture follows the new foreground window. A game that stops producing frames for five seconds returns to WGC; a failed target is not repeatedly injected during the same stream. Reconnect the stream to retry it. Normal focus changes are not failures and allow immediate reactivation. Initial hook setup has a separate 30-second frame timeout.
 
@@ -53,3 +53,11 @@ Stellar Blade was also discovered with an empty list and transitioned from SDR t
 The 28 September update replaces background-window discovery with foreground fullscreen selection. Live testing switched repeatedly between an already-running Overcooked 2 (D3D11 SDR) and a separate D3D12 4K HDR application, with direct frames confirmed from both processes in the same stream. Minimizing the game returned to WGC, and restoring it resumed direct capture. Fullscreen geometry tests cover negative monitor coordinates, rounding, title-bar/taskbar gaps and spanning windows.
 
 The helper retains its shared-memory mappings across focus changes because dormant hooks still hold references to them. It waits for the previous hook's dormant acknowledgment before resetting those mappings. If that acknowledgment fails, it keeps WGC rather than reusing resources an old producer might still access. A dormant hook stays loaded; unloading it could invalidate references retained by the game or other overlays. This is not a way to undo an anti-cheat rejection.
+
+### Permission and load-rejection validation
+
+On 2026-09-28, normal protected launches of Squadrons, Rocket League and Call of Duty HQ returned process handles with the capture permissions removed. CS2 granted those permissions but rejected loading the DLL, recording it in `trustedlaunch.cfg`.
+
+The native `tools/ce-prototype/tests/rejected_capture_recovery.cpp` test takes a protected PID, a fresh CS2 PID, a D3D test-app PID and the hook path. In one helper process, the final build rejected Rocket League in under 1 ms, rejected CS2 in 47 ms, then captured 570 frames from the D3D12 fixture over four seconds. No protection was disabled. These timings measure capture setup failures, not streaming latency.
+
+Rejected loads must not be retried in the same game process. A diagnostic second attempt against the same CS2 process did not yield usable frames, reinforcing the need for the per-process failure cache. If a loader might still be running, or an attached hook does not acknowledge shutdown, the helper keeps WGC and does not reuse potentially live shared resources. These tests verify the rejection and subsequent capture paths; they do not establish compatibility with untested protection systems.

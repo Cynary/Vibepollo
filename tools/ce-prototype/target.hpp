@@ -1,5 +1,6 @@
 #pragma once
-#include "auto_target.hpp"
+#include "auto_target_policy.hpp"
+#include <filesystem>
 #include "target_policy.hpp"
 
 #include <set>
@@ -11,7 +12,6 @@ class CeTargetSelector {
   HMONITOR monitor = nullptr;
   bool active = false;
   ULONGLONG next_scan = 0;
-  direct_capture::automatic_games games;
   std::set<std::pair<DWORD, ULONGLONG>> attempted;
 
   HWND selected_window = nullptr;
@@ -35,6 +35,7 @@ class CeTargetSelector {
 
   static bool graphics_process(DWORD pid) {
     Handle snapshot {CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid)};
+    require_module_snapshot(snapshot.v);
     MODULEENTRY32W entry {};
     entry.dwSize = sizeof(entry);
     for (BOOL ok = Module32FirstW(snapshot.v, &entry); ok; ok = Module32NextW(snapshot.v, &entry)) {
@@ -104,41 +105,35 @@ public:
       if (direct_capture::excluded_application(name)) {
         continue;
       }
-      auto root = games.game_root(path);
       wchar_t windows_dir[MAX_PATH] {};
       GetWindowsDirectoryW(windows_dir, std::size(windows_dir));
       if (direct_capture::under(path, direct_capture::normalized(windows_dir))) {
         continue;
       }
-      if (root.empty()) {
-        auto directory = std::filesystem::path(path).parent_path();
-        // Unreal stand-alone games often put the renderer two levels below
-        // the install directory. Include that directory in protection checks.
-        if (directory.filename() == L"win64" || directory.filename() == L"win32") {
-          directory = directory.parent_path();
-        }
-        if (directory.filename() == L"binaries") {
-          directory = directory.parent_path();
-        }
-        root = directory.wstring();
-      }
       auto reason = std::wstring {};
       if (std::find(excluded_paths.begin(), excluded_paths.end(), path) != excluded_paths.end()) {
         reason = L"excluded in settings";
-      } else if (direct_capture::known_incompatible_game(name)) {
-        reason = L"known incompatible game";
       } else {
-        reason = direct_capture::automatic_games::active_protection();
-      }
-      if (reason.empty()) {
-        reason = direct_capture::automatic_games::directory_protection(std::filesystem::path(path).parent_path(), root);
+        Handle access {OpenProcess(capture_injection_access, FALSE, pid)};
+        try {
+          if(!access.v)throw std::runtime_error("capture process access denied");
+          require_process_access(access.v,capture_injection_access);
+        } catch(const std::exception& error) {
+          attempted.insert(identity);
+          BOOST_LOG(warning) << "Direct capture skipped for PID " << pid << ": " << error.what() << "; using WGC";
+          continue;
+        }
       }
       if (!reason.empty()) {
         attempted.insert(identity);
         BOOST_LOG(warning) << "Direct capture skipped for PID " << pid << ": " << std::filesystem::path(reason).string() << "; using WGC";
         continue;
       }
-      if (!graphics_process(pid)) {
+      try {
+        if (!graphics_process(pid))continue;
+      } catch(const std::exception& error) {
+        attempted.insert(identity);
+        BOOST_LOG(warning) << "Direct capture skipped for PID " << pid << ": " << error.what();
         continue;
       }
       selected_window = window;

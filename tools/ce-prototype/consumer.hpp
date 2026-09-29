@@ -37,8 +37,30 @@ struct Mapping { Handle h; void* p=nullptr; ~Mapping(){if(p) UnmapViewOfFile(p);
  h.v=CreateFileMappingW(INVALID_HANDLE_VALUE,nullptr,PAGE_READWRITE,0,(DWORD)n,name);
  if(!h.v || GetLastError()==ERROR_ALREADY_EXISTS) throw std::runtime_error("mapping unavailable/already owned");
  p=MapViewOfFile(h.v,FILE_MAP_ALL_ACCESS,0,0,n); if(!p) throw std::runtime_error("MapViewOfFile"); } };
+// OpenProcess can succeed while a protection callback strips requested rights.
+// Query the returned handle itself; never infer access from a non-null handle.
+constexpr DWORD capture_injection_access = SYNCHRONIZE | PROCESS_CREATE_THREAD |
+ PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ;
+void require_process_access(HANDLE process, DWORD required) {
+ struct BasicInformation { ULONG attributes, granted, handles, pointers, reserved[10]; } info{};
+ static_assert(sizeof(info)==56);
+ using Query=LONG(NTAPI*)(HANDLE,ULONG,PVOID,ULONG,PULONG);
+ static const auto query=reinterpret_cast<Query>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"),"NtQueryObject"));
+ ULONG bytes=0;
+ if(!query || query(process,0,&info,sizeof(info),&bytes)<0)
+   throw std::runtime_error("cannot verify capture process permissions; using WGC");
+ if((info.granted & required)!=required) {
+   char reason[160];snprintf(reason,sizeof(reason),"capture process permissions denied (required=0x%lx, granted=0x%lx); using WGC",required,info.granted);
+   throw std::runtime_error(reason);
+ }
+}
+void require_module_snapshot(HANDLE snapshot) {
+ if(snapshot==INVALID_HANDLE_VALUE && GetLastError()!=ERROR_BAD_LENGTH)
+   throw std::runtime_error("capture module enumeration denied or unavailable; using WGC");
+}
 uintptr_t wow64_loader(HANDLE proc,DWORD pid) {
  Handle snapshot{CreateToolhelp32Snapshot(TH32CS_SNAPMODULE|TH32CS_SNAPMODULE32,pid)};
+ require_module_snapshot(snapshot.v);
  MODULEENTRY32W module{};module.dwSize=sizeof(module);
  for(BOOL ok=Module32FirstW(snapshot.v,&module);ok;ok=Module32NextW(snapshot.v,&module)) {
   if(_wcsicmp(module.szModule,L"kernelbase.dll"))continue;
@@ -62,9 +84,10 @@ uintptr_t wow64_loader(HANDLE proc,DWORD pid) {
  }
  return 0; // A newly created process may not have mapped kernelbase yet.
 }
-void inject(DWORD pid,const std::wstring& configuredPath) {
- Handle proc{OpenProcess(SYNCHRONIZE|PROCESS_CREATE_THREAD|PROCESS_QUERY_INFORMATION|PROCESS_VM_OPERATION|PROCESS_VM_WRITE|PROCESS_VM_READ,FALSE,pid)};
- if(!proc.v) throw std::runtime_error("OpenProcess inject");
+void inject(DWORD pid,const std::wstring& configuredPath,bool& hookMayRun) {
+ Handle proc{OpenProcess(capture_injection_access,FALSE,pid)};
+ if(!proc.v) throw std::runtime_error("capture process access denied; using WGC");
+ require_process_access(proc.v,capture_injection_access);
  BOOL wow64=FALSE;if(!IsWow64Process(proc.v,&wow64))throw std::runtime_error("IsWow64Process");
  std::wstring path=configuredPath;uintptr_t remote=0;
  if(wow64){
@@ -85,6 +108,7 @@ void inject(DWORD pid,const std::wstring& configuredPath) {
  const auto loaderDeadline=GetTickCount64()+5000;
  while(!remote) {
    Handle snap{CreateToolhelp32Snapshot(TH32CS_SNAPMODULE,pid)};
+   require_module_snapshot(snap.v);
    MODULEENTRY32W m{};m.dwSize=sizeof(m);
    for(BOOL ok=Module32FirstW(snap.v,&m);ok;ok=Module32NextW(snap.v,&m))
      if(!_wcsicmp(m.szModule,name)) remote=(uintptr_t)m.modBaseAddr+((uintptr_t)fn-(uintptr_t)owner);
@@ -95,12 +119,14 @@ void inject(DWORD pid,const std::wstring& configuredPath) {
  }
  size_t bytes=(path.size()+1)*sizeof(wchar_t); void* ptr=VirtualAllocEx(proc.v,nullptr,bytes,MEM_COMMIT|MEM_RESERVE,PAGE_READWRITE);
  if(!ptr) throw std::runtime_error("VirtualAllocEx");
- if(!WriteProcessMemory(proc.v,ptr,path.c_str(),bytes,nullptr)) throw std::runtime_error("WriteProcessMemory");
+ if(!WriteProcessMemory(proc.v,ptr,path.c_str(),bytes,nullptr)) {VirtualFreeEx(proc.v,ptr,0,MEM_RELEASE);throw std::runtime_error("WriteProcessMemory");}
  Handle thread{CreateRemoteThread(proc.v,nullptr,0,(LPTHREAD_START_ROUTINE)remote,ptr,0,nullptr)};
- if(!thread.v) throw std::runtime_error("CreateRemoteThread");
+ if(!thread.v) {VirtualFreeEx(proc.v,ptr,0,MEM_RELEASE);throw std::runtime_error("capture loader thread rejected; using WGC");}
+ hookMayRun=true;
  if(WaitForSingleObject(thread.v,15000)!=WAIT_OBJECT_0) throw std::runtime_error("loader timeout; leaving argument valid");
- DWORD result=0; GetExitCodeThread(thread.v,&result); VirtualFreeEx(proc.v,ptr,0,MEM_RELEASE);
- if(!result) throw std::runtime_error("LoadLibraryW failed");
+ DWORD result=0; BOOL gotResult=GetExitCodeThread(thread.v,&result); VirtualFreeEx(proc.v,ptr,0,MEM_RELEASE);
+ if(!gotResult)throw std::runtime_error("capture loader result unavailable; using WGC");
+ if(!result) {hookMayRun=false;throw std::runtime_error("capture hook DLL load rejected; using WGC");}
 }
 #include "frame_samples.hpp"
 #include "frame_timing_samples.hpp"
@@ -112,6 +138,7 @@ int run_capture(DWORD pid, const wchar_t* hookPath, FrameConsumer consumer,
                 ID3D11Device* importDevice = nullptr,
                 bool timestampOnly = false) {
  SharedMemoryLayout* shm=nullptr;
+ bool hookMayRun=false;
  try {
  FramePixelSamples pixelSamples;
  FrameTimingSamples timingSamples(pid);
@@ -131,10 +158,11 @@ int run_capture(DWORD pid, const wchar_t* hookPath, FrameConsumer consumer,
  shm->structSize.store(sizeof(*shm));shm->abiSignature.store(SHARED_MEMORY_ABI_SIGNATURE);shm->SetMagic(SHARED_MEMORY_MAGIC);
  auto disc=new(discMap.p) DiscoveryInfo{};
  struct StopCapture {
-   SharedMemoryLayout* s; DiscoveryInfo* d; DWORD pid; bool& reusable; bool stopped=false;
+   SharedMemoryLayout* s; DiscoveryInfo* d; DWORD pid; bool& reusable; bool& hookMayRun; bool stopped=false;
    void shutdown() noexcept {
      if(stopped)return;
      stopped=true;
+     if(!hookMayRun) {d->SetMagic(0);reusable=true;return;}
      s->runtimeState.captureRequested.store(false);
      s->SetRequestExit(true);
      wchar_t eventName[128]; GenerateInjectDormantEventName(eventName,128,pid);
@@ -151,7 +179,7 @@ int run_capture(DWORD pid, const wchar_t* hookPath, FrameConsumer consumer,
      d->SetMagic(0);
    }
    ~StopCapture(){shutdown();}
- } stop{shm,disc,pid,reusable};
+ } stop{shm,disc,pid,reusable,hookMayRun};
  Handle nameProcess{OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,FALSE,pid)};
  wchar_t exePath[32768];DWORD pathLength=32768;
  if(!nameProcess.v||!QueryFullProcessImageNameW(nameProcess.v,0,exePath,&pathLength))throw std::runtime_error("target name");
@@ -167,6 +195,7 @@ int run_capture(DWORD pid, const wchar_t* hookPath, FrameConsumer consumer,
  GenerateInjectReactivateEventName(name,128,pid);
  Handle resident{OpenEventW(EVENT_MODIFY_STATE,FALSE,name)};
  if(resident.v) {
+   hookMayRun=true;
    // A previous generation's dormant acknowledgment must not satisfy shutdown
    // while this reactivation is still being processed by the hook thread.
    wchar_t dormantName[128];GenerateInjectDormantEventName(dormantName,128,pid);
@@ -175,7 +204,7 @@ int run_capture(DWORD pid, const wchar_t* hookPath, FrameConsumer consumer,
    if(!SetEvent(resident.v)) throw std::runtime_error("resident hook reactivation");
  } else {
    if(GetLastError()!=ERROR_FILE_NOT_FOUND) throw std::runtime_error("hook lifecycle event access");
-   inject(pid,path);
+   inject(pid,path,hookMayRun);
  }
  Handle patternStart{OpenEventW(EVENT_MODIFY_STATE,FALSE,L"Local\\MoonmachineCapturePatternStart")};
  if(patternStart.v) {
