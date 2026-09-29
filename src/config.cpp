@@ -1884,6 +1884,7 @@ namespace config {
     string_f(vars, "capture", video.capture);
     bool_f(vars, "direct_capture_enabled", video.direct_capture_enabled);
     string_f(vars, "direct_capture_executables", video.direct_capture_executables);
+    string_f(vars, "direct_capture_exclusions", video.direct_capture_exclusions);
 #ifdef _WIN32
     if (video.direct_capture_enabled) video.capture = "wgc";
 #endif

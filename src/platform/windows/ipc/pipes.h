@@ -95,6 +95,7 @@ namespace platf::dxgi {
     int32_t activity_admission_fps;
     uint32_t direct_capture_enabled;
     wchar_t direct_capture_executables[4096];
+    wchar_t direct_capture_exclusions[4096];
   };
 
   constexpr uint32_t WGC_ACTIVITY_ADMISSION_MESSAGE_MAGIC = 0x57474341;  // "WGCA"

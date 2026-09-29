@@ -1775,11 +1775,15 @@
         },
         "direct_capture_enabled": {
           "label": "Direct game capture",
-          "description": "Capture listed games before Windows desktop composition. Uses Windows Graphics Capture for the desktop and unsupported games. Requires the bundled CaptureEngine hook. Leave games with anti-cheat off the list; injected capture may be blocked."
+          "description": "Automatically capture game windows on the streamed display before desktop composition. Steam, Epic and Ubisoft installs are discovered automatically. Known protected games use WGC. Anti-cheat detection is best-effort and cannot guarantee compatibility with unknown protection."
         },
         "direct_capture_executables": {
-          "label": "Direct capture game executables",
-          "description": "Full paths to the actual game EXE files, separated by semicolons (up to 16). Launchers and wildcard names are not supported. Restart an already-running game after enabling this."
+          "label": "Additional game executables (optional)",
+          "description": "Normally leave empty. Add full EXE paths only for standalone games that are not recognized automatically. Separate paths with semicolons."
+        },
+        "direct_capture_exclusions": {
+          "label": "Always use WGC for these games",
+          "description": "Optional full EXE paths, separated by semicolons. These games are never injected, even if automatically recognized or listed above."
         }
       },
       "integrations": {

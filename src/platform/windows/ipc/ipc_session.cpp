@@ -347,7 +347,16 @@ namespace platf::dxgi {
     if (config::video.direct_capture_enabled && direct_paths.size() < std::size(config_data.direct_capture_executables)) {
       std::copy(direct_paths.begin(), direct_paths.end(), config_data.direct_capture_executables);
     } else if (config::video.direct_capture_enabled) {
+      config_data.direct_capture_enabled = 0;
       BOOST_LOG(error) << "Direct capture executable list is too long; using desktop capture";
+    }
+
+    const auto direct_exclusions = platf::from_utf8(config::video.direct_capture_exclusions);
+    if (direct_exclusions.size() < std::size(config_data.direct_capture_exclusions)) {
+      std::copy(direct_exclusions.begin(), direct_exclusions.end(), config_data.direct_capture_exclusions);
+    } else {
+      config_data.direct_capture_enabled = 0;
+      BOOST_LOG(error) << "Direct capture exclusion list is too long; using desktop capture";
     }
 
     // Convert display_name (std::string) to wchar_t[32]

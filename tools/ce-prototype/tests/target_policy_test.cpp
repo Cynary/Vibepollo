@@ -1,9 +1,27 @@
+#include "../auto_target_policy.hpp"
 #include "../target_policy.hpp"
 
 #include <cassert>
 
 int main() {
   using namespace direct_capture;
+  assert(conventional_game_root(L"e:\\steamapps\\common\\new game\\bin\\game.exe") == L"e:\\steamapps\\common\\new game");
+  assert(conventional_game_root(L"c:\\xboxgames\\another game\\content\\game.exe") == L"c:\\xboxgames\\another game");
+  assert(conventional_game_root(L"c:\\windows\\explorer.exe").empty());
+  assert(under(L"e:\\games\\game\\bin\\game.exe", L"e:\\games\\game"));
+  assert(!under(L"e:\\games\\game2\\game.exe", L"e:\\games\\game"));
+  assert(excluded_application(L"epicgameslauncher.exe"));
+  assert(excluded_application(L"upc.exe"));
+  assert(excluded_application(L"steamwebhelper.exe"));
+  assert(excluded_application(L"chrome.exe"));
+  assert(!excluded_application(L"never-listed-before.exe"));
+  assert(known_incompatible_game(L"cs2.exe"));
+  assert(anti_cheat_marker(L"easyanticheat_eos.sys"));
+  assert(anti_cheat_marker(L"battleye"));
+  assert(anti_cheat_marker(L"vgk"));
+  assert(!anti_cheat_marker(L"nvgcolor.dll"));
+  assert(game_window_class(L"unitywndclass"));
+  assert(!game_window_class(L"chrome_widgetwin_1"));
   assert(parse_paths(L"").empty());
   const auto paths = parse_paths(L" \"C:/Games/A.exe\" ; D:\\Games\\B.EXE ; c:\\games\\a.exe ");
   assert(paths.size() == 2 && paths[0] == L"c:\\games\\a.exe");

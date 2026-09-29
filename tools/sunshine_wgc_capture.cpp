@@ -2509,6 +2509,8 @@ int main(int argc, char *argv[]) {
   // Create WGC capture manager
   std::wstring direct_hook;
   std::wstring direct_paths;
+  std::wstring direct_exclusions;
+  bool direct_enabled = false;
   if (g_config.direct_capture_enabled) {
     wchar_t module[32768]{};
     const auto length=GetModuleFileNameW(nullptr,module,std::size(module));
@@ -2516,16 +2518,24 @@ int main(int argc, char *argv[]) {
       direct_hook=(std::filesystem::path(module).parent_path()/L"capture-engine"/L"capture_hook_x64.dll").wstring();
       std::error_code hook_error;
       if(std::filesystem::is_regular_file(direct_hook,hook_error)) {
-        const auto end=std::find(std::begin(g_config.direct_capture_executables),std::end(g_config.direct_capture_executables),L'\0');
-        if(end!=std::end(g_config.direct_capture_executables)) {
-          direct_paths.assign(std::begin(g_config.direct_capture_executables),end);
-          try {direct_capture::parse_paths(direct_paths);}
-          catch(const std::exception& e){BOOST_LOG(error)<<"Direct capture disabled: "<<e.what();direct_paths.clear();}
+        try {
+          auto read_paths=[](const auto& buffer) {
+            const auto end=std::find(std::begin(buffer),std::end(buffer),L'\0');
+            if(end==std::end(buffer))throw std::runtime_error("unterminated executable list");
+            std::wstring value(std::begin(buffer),end);
+            direct_capture::parse_paths(value);
+            return value;
+          };
+          direct_paths=read_paths(g_config.direct_capture_executables);
+          direct_exclusions=read_paths(g_config.direct_capture_exclusions);
+          direct_enabled=true;
+        } catch(const std::exception& e) {
+          BOOST_LOG(error)<<"Direct capture disabled: "<<e.what();
         }
       } else { BOOST_LOG(warning)<<"Direct capture hook is not bundled; using desktop capture"; }
     }
   }
-  CeTargetSelector direct_target(direct_paths);
+  CeTargetSelector direct_target(direct_enabled,display_manager.get_selected_monitor(),direct_paths,direct_exclusions);
   auto make_wgc = [&] {
     return std::make_unique<WgcCaptureManager>(capture_format,display_manager.get_width(),display_manager.get_height(),
       WgcCaptureDependencies{d3d11_manager.get_winrt_device(),item,shared_resource_manager,d3d11_manager.get_context()});
@@ -2551,7 +2561,6 @@ int main(int argc, char *argv[]) {
 
   wgc_capture_manager->start_capture();
 
-  CeStreamReady direct_ready(g_config.direct_capture_enabled != 0);
 
   // Main message loop
   bool shutdown_requested = false;

@@ -707,6 +707,7 @@ export const settingsCategories: SettingsCategory[] = [
           boolean('wgc_pacing_smoothing', { platform: 'windows' }),
           boolean('direct_capture_enabled', { platform: 'windows' }),
           text('direct_capture_executables', { platform: 'windows', monospace: true, stacked: true }),
+          text('direct_capture_exclusions', { platform: 'windows', monospace: true, stacked: true }),
         ],
       },
       {
@@ -813,6 +814,7 @@ export const settingsCategories: SettingsCategory[] = [
           boolean('wgc_pacing_smoothing', { platform: 'windows' }),
           boolean('direct_capture_enabled', { platform: 'windows' }),
           text('direct_capture_executables', { platform: 'windows', monospace: true, stacked: true }),
+          text('direct_capture_exclusions', { platform: 'windows', monospace: true, stacked: true }),
         ],
       },
       {
@@ -1111,6 +1113,7 @@ export const settingsDefaults: Record<string, unknown> = {
   wgc_pacing_smoothing: true,
   direct_capture_enabled: false,
   direct_capture_executables: '',
+  direct_capture_exclusions: '',
   hevc_mode: 0,
   av1_mode: 0,
   max_bitrate: 0,

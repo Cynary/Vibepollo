@@ -164,4 +164,4 @@ certificate by the [SignPath Foundation](https://signpath.org?utm_source=foundat
 
 ## Direct game capture
 
-This fork includes opt-in capture before Windows desktop composition, with WGC fallback. See [setup, compatibility and build instructions](docs/direct-game-capture.md).
+This fork includes opt-in capture before Windows desktop composition. It discovers game windows automatically, including launcher-started games, and keeps WGC available for desktop capture and unsupported games. See [setup, compatibility and build instructions](docs/direct-game-capture.md).

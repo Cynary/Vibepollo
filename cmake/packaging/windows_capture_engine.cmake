@@ -1,25 +1,25 @@
-# CaptureEngine ABI 63, source c13145ecefabdb18a48b245b3861fd5bdaeb8551.
+# CaptureEngine ABI 63, source 7d022c8585c1dbc2bcc60e2e44ff1426555f1771.
 set(CAPTURE_ENGINE_BUNDLE_DIR "" CACHE PATH "Directory containing the pinned CaptureEngine hooks and LICENSE")
 option(SUNSHINE_BUNDLE_DIRECT_CAPTURE "Bundle the pinned direct game capture hooks" ON)
 if(SUNSHINE_BUNDLE_DIRECT_CAPTURE AND NOT CAPTURE_ENGINE_BUNDLE_DIR)
-    set(_ce_archive "${CMAKE_BINARY_DIR}/capture-engine-abi63-20260928.zip")
-    set(_ce_sha256 "069083bf55546aeef5cb44b0ec4735c79db290316387360392249bdf1a772403")
+    set(_ce_archive "${CMAKE_BINARY_DIR}/capture-engine-auto-abi63-20260928.zip")
+    set(_ce_sha256 "8b1bbb33ad0e7094b89e641109cbcb9b57b8030492f42999b58b1c436210dfba")
     if(EXISTS "${_ce_archive}")
         file(SHA256 "${_ce_archive}" _ce_cached_hash)
     endif()
     if(NOT _ce_cached_hash STREQUAL _ce_sha256)
         file(DOWNLOAD
-            "https://github.com/Cynary/capture-engine/releases/download/vibepollo-abi63-20260928/capture-engine-abi63.zip"
+            "https://github.com/Cynary/capture-engine/releases/download/vibepollo-auto-abi63-20260928/capture-engine-abi63.zip"
             "${_ce_archive}"
             EXPECTED_HASH "SHA256=${_ce_sha256}"
             TLS_VERIFY ON TIMEOUT 120)
     endif()
-    set(CAPTURE_ENGINE_BUNDLE_DIR "${CMAKE_BINARY_DIR}/capture-engine-abi63-20260928")
+    set(CAPTURE_ENGINE_BUNDLE_DIR "${CMAKE_BINARY_DIR}/capture-engine-auto-abi63-20260928")
     file(ARCHIVE_EXTRACT INPUT "${_ce_archive}" DESTINATION "${CAPTURE_ENGINE_BUNDLE_DIR}")
 endif()
 if(CAPTURE_ENGINE_BUNDLE_DIR)
     set(_ce_names capture_hook_x64.dll capture_hook_x86.dll)
-    set(_ce_hashes c17758ea8940d8e42445521f25316aeaa0fcbe7492c89aad4dc6277c2f8ec5bb 9824cabe94883cb9c0fb8cd07dc7360d4be7a882e557e8cc73a3426b179741ea)
+    set(_ce_hashes b1bf321d6f3873724823b878a55fa109af7e0bf83050a54787758487cb80ff4b f2596e37aa5070db3930fba2953e0cd1611817ccfc0aec956872107dca21221b)
     foreach(_index RANGE 0 1)
         list(GET _ce_names ${_index} _name)
         list(GET _ce_hashes ${_index} _expected)

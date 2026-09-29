@@ -403,10 +403,12 @@
     "output_name_default": "Primary display (default)"
   },
   "config": {
+    "direct_capture_exclusions_desc": "Optional full EXE paths, separated by semicolons. These games are never injected, even if automatically recognized or listed above.",
+    "direct_capture_exclusions": "Always use WGC for these games",
     "direct_capture_enabled": "Direct game capture",
-    "direct_capture_enabled_desc": "Capture listed games before Windows desktop composition. Uses Windows Graphics Capture for the desktop and unsupported games. Requires the bundled CaptureEngine hook. Leave games with anti-cheat off the list; injected capture may be blocked.",
-    "direct_capture_executables": "Direct capture game executables",
-    "direct_capture_executables_desc": "Full paths to the actual game EXE files, separated by semicolons (up to 16). Launchers and wildcard names are not supported. Restart an already-running game after enabling this.",
+    "direct_capture_enabled_desc": "Automatically capture game windows on the streamed display before desktop composition. Steam, Epic and Ubisoft installs are discovered automatically. Known protected games use WGC. Anti-cheat detection is best-effort and cannot guarantee compatibility with unknown protection.",
+    "direct_capture_executables": "Additional game executables (optional)",
+    "direct_capture_executables_desc": "Normally leave empty. Add full EXE paths only for standalone games that are not recognized automatically. Separate paths with semicolons.",
     "rtss_allow_virtual_display_override": "Allow non-Reflex RTSS modes on virtual displays",
     "rtss_allow_virtual_display_override_desc": "Virtual displays normally enforce NVIDIA Reflex because DLSS Frame Generation can otherwise add significant latency. Enable this only to apply the selected RTSS mode to virtual displays; mark a DLSS/FSR game as Frame generation -> Game provided to force Reflex for that app.",
     "remote_monitor_confirm_app_replacement": "Confirm before replacing a running app",
