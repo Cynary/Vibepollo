@@ -256,6 +256,7 @@ namespace config {
     bool ignore_encoder_probe_failure;
     bool direct_capture_enabled = false;
     std::string direct_capture_executables;
+    std::string direct_capture_exclusions;
   };
 
   struct audio_t {

@@ -2665,22 +2665,8 @@ namespace proc {
                            << provider_directory << "]";
         }
       }
-      std::string launch_command = _app.cmd;
-#ifdef _WIN32
-      if (config::video.direct_capture_enabled) {
-        wchar_t executable[32768]{};
-        const auto length=GetModuleFileNameW(nullptr,executable,std::size(executable));
-        if(length && length<std::size(executable)) {
-          const auto launcher=std::filesystem::path(executable).parent_path()/L"tools"/L"ce-stream-launcher.exe";
-          std::error_code launcher_error;
-          if(std::filesystem::is_regular_file(launcher,launcher_error))
-            launch_command="\""+platf::dxgi::wide_to_utf8(launcher.wstring())+"\" "+launch_command;
-          else BOOST_LOG(warning)<<"Direct capture readiness launcher missing; launching with desktop fallback";
-        }
-      }
-#endif
-      BOOST_LOG(info) << "Executing: ["sv << launch_command << "] in ["sv << working_dir << ']';
-      _process = platf::run_command(_app.elevated, true, launch_command, working_dir, _env, _pipe.get(), ec, &_process_group);
+      BOOST_LOG(info) << "Executing: ["sv << _app.cmd << "] in ["sv << working_dir << ']';
+      _process = platf::run_command(_app.elevated, true, _app.cmd, working_dir, _env, _pipe.get(), ec, &_process_group);
       if (ec) {
         BOOST_LOG(warning) << "Couldn't run ["sv << _app.cmd << "]: System: "sv << ec.message();
         return -1;

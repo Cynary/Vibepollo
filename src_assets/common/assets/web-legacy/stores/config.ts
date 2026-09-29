@@ -255,6 +255,7 @@ const defaultGroups = [
       capture: '',
       direct_capture_enabled: false,
       direct_capture_executables: '',
+      direct_capture_exclusions: '',
       encoder: '',
     },
   },
