@@ -124,7 +124,7 @@ class CeOutput {
     trace("ce_bridge_wait_begin");
     if(WaitForSingleObject(done.v,2000)!=WAIT_OBJECT_0)throw std::runtime_error("bridge GPU timeout");
     trace("ce_bridge_wait_end");
-    resources.publish_frame_metadata(timestamp);
+    resources.publish_frame_metadata(timestamp, true);
     trace("ce_bridge_metadata_done");
     release.disable();check(mutex->ReleaseSync(0),"output release");
     trace("ce_bridge_unlock_done");

@@ -73,7 +73,7 @@ namespace platf::dxgi {
      * @param frame_qpc_out Output for the frame QPC timestamp (`0` if unavailable).
      * @return Capture result enum indicating success, timeout, or failure.
      */
-    capture_e acquire(std::chrono::milliseconds timeout, winrt::com_ptr<ID3D11Texture2D> &gpu_tex_out, uint64_t &frame_qpc_out);
+    capture_e acquire(std::chrono::milliseconds timeout, winrt::com_ptr<ID3D11Texture2D> &gpu_tex_out, uint64_t &frame_qpc_out, bool &direct_capture_out);
 
     /**
      * @brief Wait for a new frame event without taking the shared keyed mutex.
@@ -88,7 +88,7 @@ namespace platf::dxgi {
      * @param frame_qpc_out Output for the frame QPC timestamp (`0` if unavailable).
      * @return Capture result enum indicating success, timeout, or failure.
      */
-    capture_e lock_frame(winrt::com_ptr<ID3D11Texture2D> &gpu_tex_out, uint64_t &frame_qpc_out);
+    capture_e lock_frame(winrt::com_ptr<ID3D11Texture2D> &gpu_tex_out, uint64_t &frame_qpc_out, bool &direct_capture_out);
 
     /**
      * @brief Release the keyed mutex.

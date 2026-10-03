@@ -2,6 +2,7 @@
  * @file src/video.cpp
  * @brief Definitions for video.
  */
+#include "capture_timestamp_policy.h"
 // standard includes
 #include <algorithm>
 #include <array>
@@ -1524,6 +1525,7 @@ namespace video {
       std::optional<std::chrono::steady_clock::time_point> frame_timestamp;
       std::optional<std::chrono::steady_clock::time_point> capture_timestamp;
       std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp;
+      bool direct_capture = false;
     };
 
     void store_frame_timestamps(uint64_t frame_index, const frame_timestamps_t &ts) {
@@ -3318,6 +3320,7 @@ namespace video {
           trim_imgs();
           img_out->frame_timestamp.reset();
           img_out->host_processing_timestamp.reset();
+          img_out->direct_capture = false;
           img_out->capture_pacing_timestamp.reset();
           return true;
         } else {
@@ -3567,7 +3570,8 @@ namespace video {
     void *channel_data,
     std::optional<std::chrono::steady_clock::time_point> frame_timestamp,
     std::optional<std::chrono::steady_clock::time_point> capture_timestamp,
-    std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp
+    std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp,
+    bool direct_capture
   ) {
     auto &frame = session.device->frame;
     frame->pts = frame_nr;
@@ -3633,6 +3637,7 @@ namespace video {
       if (av_packet && av_packet->pts == frame_nr) {
         packet->frame_timestamp = frame_timestamp;
         packet->capture_timestamp = capture_timestamp ? capture_timestamp : frame_timestamp;
+        packet->direct_capture = direct_capture;
         packet->host_processing_timestamp = host_processing_timestamp;
       }
 
@@ -3655,7 +3660,8 @@ namespace video {
     void *channel_data,
     std::optional<std::chrono::steady_clock::time_point> frame_timestamp,
     std::optional<std::chrono::steady_clock::time_point> capture_timestamp,
-    std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp
+    std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp,
+    bool direct_capture
   ) {
     const auto diagnostic_encode_start = std::chrono::steady_clock::now();
     auto encoded_frame = session.encode_frame(frame_nr);
@@ -3676,6 +3682,7 @@ namespace video {
     packet->diagnostic_encode_end = diagnostic_encode_end;
     packet->frame_timestamp = frame_timestamp;
     packet->capture_timestamp = capture_timestamp ? capture_timestamp : frame_timestamp;
+    packet->direct_capture = direct_capture;
     packet->host_processing_timestamp = host_processing_timestamp;
     if (webrtc_stream::has_active_sessions()) {
       webrtc_stream::submit_video_packet(*packet);
@@ -3714,6 +3721,7 @@ namespace video {
       packet->after_ref_frame_invalidation = encoded_frame.after_ref_frame_invalidation;
       packet->frame_timestamp = ts.frame_timestamp;
       packet->capture_timestamp = ts.capture_timestamp ? ts.capture_timestamp : ts.frame_timestamp;
+      packet->direct_capture = ts.direct_capture;
       packet->host_processing_timestamp = ts.host_processing_timestamp;
       if (webrtc_stream::has_active_sessions()) {
         webrtc_stream::submit_video_packet(*packet);
@@ -3730,11 +3738,12 @@ namespace video {
     void *channel_data,
     std::optional<std::chrono::steady_clock::time_point> frame_timestamp,
     std::optional<std::chrono::steady_clock::time_point> capture_timestamp,
-    std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp
+    std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp,
+    bool direct_capture
   ) {
     // Stash this frame's timestamps before submitting; the encoder is pipelined and
     // emits an earlier frame, so the packet is stamped from this map by emitted index.
-    session.store_frame_timestamps((uint64_t) frame_nr, {frame_timestamp, capture_timestamp, host_processing_timestamp});
+    session.store_frame_timestamps((uint64_t) frame_nr, {frame_timestamp, capture_timestamp, host_processing_timestamp, direct_capture});
 
     auto encode_result = session.encode_frames(frame_nr);
     auto &encoded_frames = encode_result.frames;
@@ -3763,17 +3772,18 @@ namespace video {
     void *channel_data,
     std::optional<std::chrono::steady_clock::time_point> frame_timestamp,
     std::optional<std::chrono::steady_clock::time_point> capture_timestamp,
-    std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp
+    std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp,
+    bool direct_capture
   ) {
     thread_local logging::min_max_avg_periodic_logger<double> encode_duration_logger(debug, "Video encode call duration", "ms");
     const auto encode_start = std::chrono::steady_clock::now();
     int result = -1;
     if (auto avcodec_session = dynamic_cast<avcodec_encode_session_t *>(&session)) {
-      result = encode_avcodec(frame_nr, *avcodec_session, packets, channel_data, frame_timestamp, capture_timestamp, host_processing_timestamp);
+      result = encode_avcodec(frame_nr, *avcodec_session, packets, channel_data, frame_timestamp, capture_timestamp, host_processing_timestamp, direct_capture);
     } else if (auto nvenc_session = dynamic_cast<nvenc_encode_session_t *>(&session)) {
-      result = encode_nvenc(frame_nr, *nvenc_session, packets, channel_data, frame_timestamp, capture_timestamp, host_processing_timestamp);
+      result = encode_nvenc(frame_nr, *nvenc_session, packets, channel_data, frame_timestamp, capture_timestamp, host_processing_timestamp, direct_capture);
     } else if (auto amf_session = dynamic_cast<amf_encode_session_t *>(&session)) {
-      result = encode_amf(frame_nr, *amf_session, packets, channel_data, frame_timestamp, capture_timestamp, host_processing_timestamp);
+      result = encode_amf(frame_nr, *amf_session, packets, channel_data, frame_timestamp, capture_timestamp, host_processing_timestamp, direct_capture);
     }
 
     encode_duration_logger.collect_and_log(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - encode_start).count());
@@ -5215,7 +5225,6 @@ namespace video {
     double minimum_fps_target = (config::video.minimum_fps_target > 0.0) ? config::video.minimum_fps_target * 1000 : std::max(config.encodingFramerate / 5, 10000);
     auto max_frametime = std::chrono::nanoseconds(1000ms) * 1000 / minimum_fps_target;
     auto encode_frame_threshold = std::chrono::nanoseconds(1000ms) * 1000 / config.encodingFramerate;
-    auto frame_variation_threshold = encode_frame_threshold / 4;
     BOOST_LOG(info) << "Minimum FPS target set to ~"sv << (minimum_fps_target / 2000) << "fps ("sv << max_frametime * 2 << ")"sv;
     BOOST_LOG(info) << "Encoding Frame threshold: "sv << encode_frame_threshold;
 
@@ -5244,7 +5253,7 @@ namespace video {
       // then keep draining until that accepted input actually emits.
       const auto now = std::chrono::steady_clock::now();
       const auto dummy_frame_index = static_cast<uint64_t>(frame_nr++);
-      if (encode(dummy_frame_index, *session, packets, channel_data, now, now, now)) {
+      if (encode(dummy_frame_index, *session, packets, channel_data, now, now, now, false)) {
         BOOST_LOG(error) << "Could not encode dummy video packet"sv;
         return native_amf_failure();
       }
@@ -5259,7 +5268,7 @@ namespace video {
             return native_amf_failure();
           }
           deliver_amf_frames(dummy_frame_index, *amf_session, delayed.frames, packets, channel_data);
-          if (encode(dummy_frame_index, *session, packets, channel_data, now, now, now)) {
+          if (encode(dummy_frame_index, *session, packets, channel_data, now, now, now, false)) {
             BOOST_LOG(error) << "Could not resubmit the AMF input-only dummy packet"sv;
             return native_amf_failure();
           }
@@ -5386,6 +5395,7 @@ namespace video {
       std::optional<std::chrono::steady_clock::time_point> frame_timestamp;
       std::optional<std::chrono::steady_clock::time_point> capture_timestamp;
       std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp;
+      bool direct_capture = false;
       bool placeholder_input = bootstrap_state.current_input_placeholder;
 
       // Encode at a minimum FPS to avoid image quality issues with static content
@@ -5476,6 +5486,7 @@ namespace video {
             capture_timestamp = img->frame_timestamp;
             frame_timestamp = capture_timestamp;
             host_processing_timestamp = img->host_processing_timestamp;
+            direct_capture = img->direct_capture;
           }
           if (session->convert(*img)) {
             BOOST_LOG(error) << "Could not convert image"sv;
@@ -5500,20 +5511,8 @@ namespace video {
 
           if (!placeholder_input) {
             bootstrap_state.real_frame_seen = true;
-            if (!encode_frame_timestamp) {
-              encode_frame_timestamp = *frame_timestamp;
-            }
-
-            const auto time_diff = (*frame_timestamp > *encode_frame_timestamp)
-              ? (*frame_timestamp - *encode_frame_timestamp)
-              : (*encode_frame_timestamp - *frame_timestamp);
-            if (time_diff < frame_variation_threshold) {
-              *frame_timestamp = *encode_frame_timestamp;
-            } else {
-              *encode_frame_timestamp = *frame_timestamp;
-            }
-
-            *encode_frame_timestamp += encode_frame_threshold;
+            *frame_timestamp = capture_timing::encode_timestamp(
+              *frame_timestamp, direct_capture, encode_frame_timestamp, encode_frame_threshold);
           } else {
             frame_timestamp.reset();
             host_processing_timestamp.reset();
@@ -5532,7 +5531,7 @@ namespace video {
         continue;
       }
 
-      if (encode(frame_nr++, *session, packets, channel_data, frame_timestamp, capture_timestamp, host_processing_timestamp)) {
+      if (encode(frame_nr++, *session, packets, channel_data, frame_timestamp, capture_timestamp, host_processing_timestamp, direct_capture)) {
         BOOST_LOG(error) << "Could not encode video packet"sv;
         native_amf_runtime_failed = native_amf_session;
         break;
@@ -6011,6 +6010,7 @@ namespace video {
           std::optional<std::chrono::steady_clock::time_point> frame_timestamp;
           std::optional<std::chrono::steady_clock::time_point> capture_timestamp;
           std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp;
+          bool direct_capture = false;
           bool placeholder_input = pos->bootstrap.current_input_placeholder;
 
           if (frame_captured) {
@@ -6022,6 +6022,7 @@ namespace video {
             if (!placeholder_input) {
               capture_timestamp = img->frame_timestamp;
               host_processing_timestamp = img->host_processing_timestamp;
+              direct_capture = img->direct_capture;
             }
 
             if (pos->session->convert(*img)) {
@@ -6058,7 +6059,7 @@ namespace video {
             continue;
           }
 
-          if (encode(ctx->frame_nr++, *pos->session, ctx->packets, ctx->channel_data, frame_timestamp, capture_timestamp, host_processing_timestamp)) {
+          if (encode(ctx->frame_nr++, *pos->session, ctx->packets, ctx->channel_data, frame_timestamp, capture_timestamp, host_processing_timestamp, direct_capture)) {
             BOOST_LOG(error) << "Could not encode video packet"sv;
             ctx->shutdown_event->raise(true);
 
@@ -6098,6 +6099,7 @@ namespace video {
         img_out = img;
         img_out->frame_timestamp.reset();
         img_out->host_processing_timestamp.reset();
+        img_out->direct_capture = false;
         img_out->capture_pacing_timestamp.reset();
         return true;
       };
@@ -6299,10 +6301,12 @@ namespace video {
 
       std::optional<std::chrono::steady_clock::time_point> frame_timestamp;
       std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp;
+      bool direct_capture = false;
       if (auto img = images->pop(max_frametime)) {
         if (!is_placeholder_capture_image(*img)) {
           frame_timestamp = img->frame_timestamp;
           host_processing_timestamp = img->host_processing_timestamp;
+          direct_capture = img->direct_capture;
         }
         last_img = std::move(img);
       } else if (!images->running()) {
@@ -6330,6 +6334,7 @@ namespace video {
       packet->pyrowave_detail_fec_percentage = detail_fec.percentage;
       packet->pyrowave_frame_wire_budget = detail_fec.frame_wire_budget;
       packet->frame_timestamp = frame_timestamp;
+      packet->direct_capture = direct_capture;
       packet->host_processing_timestamp = host_processing_timestamp;
       packet->packet_enqueue_timestamp = std::chrono::steady_clock::now();
       // Each frame is independent. Replace this session's pending frame when
@@ -6756,7 +6761,7 @@ namespace video {
             return util::false_v<util::optional_t<int>>;
           }
           const auto probe_frame_index = static_cast<int64_t>(probe_attempts) + 1;
-          if (encode(probe_frame_index, *session, packets, nullptr, {}, {}, {})) {
+          if (encode(probe_frame_index, *session, packets, nullptr, {}, {}, {}, false)) {
             return util::false_v<util::optional_t<int>>;
           }
         }

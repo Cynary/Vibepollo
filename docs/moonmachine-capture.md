@@ -84,3 +84,26 @@ thread cleanup, retaining final trace snapshots without detaching live workers.
 creation, final snapshot flushing, and worker shutdown. Its `--legacy-tls` mode
 reproduces the unsafe lifetime and must only run in a separate process with an
 external timeout on Windows.
+
+### Direct-capture timestamps with upstream 2.0.0
+
+The WGC helper can publish either compositor frames or game-hook frames. Each
+frame now carries its origin with its QPC timestamp through the shared metadata,
+encoder image and encoded packet. AMF retains that flag by encoded frame index;
+PyroWave also carries it. A cached frame stamped with the current time does not
+claim a game-hook timestamp.
+
+Direct-origin frames bypass both nominal encoder timestamp snapping and WGC
+send-time Present refinement. Their RTP timestamps come from the hook's original
+capture time, subject only to the normal 90 kHz RTP conversion. WGC keeps both
+upstream adjustments. Returning from direct capture clears the encoder's old
+nominal prediction so the first WGC frame establishes a new one. Duplicate
+packets retain the existing synthetic-timestamp path.
+
+Update the host executable and `sunshine_wgc_capture.exe` together: shared
+frame metadata now includes the origin field. No change to the injected capture
+hook is required. Install with the stream stopped and restart the host service.
+The standalone timestamp policy test covers WGC smoothing, direct preservation,
+source transitions and discontinuities. Live latency improvement must be checked
+with a new gameplay capture; timestamp correctness alone does not guarantee a
+lower p99.

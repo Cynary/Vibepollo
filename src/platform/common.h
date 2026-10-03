@@ -385,6 +385,7 @@ namespace platf {
 
     std::optional<std::chrono::steady_clock::time_point> frame_timestamp;
     std::optional<std::chrono::steady_clock::time_point> host_processing_timestamp;
+    bool direct_capture = false; ///< This frame carries an authoritative game-hook timestamp.
     std::optional<std::chrono::steady_clock::time_point> capture_pacing_timestamp;
 
     virtual ~img_t() = default;

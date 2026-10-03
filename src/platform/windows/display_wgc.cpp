@@ -196,6 +196,7 @@ namespace platf::dxgi {
 
       const auto now = std::chrono::steady_clock::now();
       cached_frame->frame_timestamp = now;
+      cached_frame->direct_capture = false;
       cached_frame->host_processing_timestamp = now;
       cached_frame->capture_pacing_timestamp = now;
       img_out = std::move(cached_frame);
@@ -365,9 +366,10 @@ namespace platf::dxgi {
 
     texture2d_t src;
     uint64_t frame_qpc = 0;
+    bool direct_capture = false;
     winrt::com_ptr<ID3D11Texture2D> gpu_tex;
     wgc_stage_trace::capture("ipc_lock_start");
-    capture_status = _ipc_session->lock_frame(gpu_tex, frame_qpc);
+    capture_status = _ipc_session->lock_frame(gpu_tex, frame_qpc, direct_capture);
     wgc_stage_trace::capture("ipc_lock_end");
     if (capture_status != capture_e::ok) {
       return capture_status;
@@ -419,6 +421,7 @@ namespace platf::dxgi {
     }
 
     img->frame_timestamp = frame_timestamp;
+    img->direct_capture = direct_capture;
     img->host_processing_timestamp = host_processing_timestamp;
     // Keep WGC's QPC-derived timestamp for RTP/client accounting, but do not
     // use compositor timestamp jitter as the capture-loop sleep anchor.
@@ -435,7 +438,8 @@ namespace platf::dxgi {
     }
 
     winrt::com_ptr<ID3D11Texture2D> gpu_tex;
-    auto status = _ipc_session->acquire(effective_wgc_timeout(timeout, _config.framerate), gpu_tex, frame_qpc);
+    bool direct_capture = false;
+    auto status = _ipc_session->acquire(effective_wgc_timeout(timeout, _config.framerate), gpu_tex, frame_qpc, direct_capture);
 
     if (status != capture_e::ok) {
       return status;
@@ -558,8 +562,9 @@ namespace platf::dxgi {
 
     winrt::com_ptr<ID3D11Texture2D> gpu_tex;
     uint64_t frame_qpc = 0;
+    bool direct_capture = false;
     timeout = effective_wgc_timeout(timeout, _config.framerate);
-    auto status = _ipc_session->acquire(timeout, gpu_tex, frame_qpc);
+    auto status = _ipc_session->acquire(timeout, gpu_tex, frame_qpc, direct_capture);
 
     if (status != capture_e::ok) {
       if (status == capture_e::timeout) {
@@ -679,6 +684,7 @@ namespace platf::dxgi {
     const auto host_processing_timestamp = std::chrono::steady_clock::now();
     auto frame_timestamp = host_processing_timestamp - qpc_time_difference(qpc_counter(), frame_qpc);
     img->frame_timestamp = frame_timestamp;
+    img->direct_capture = direct_capture;
     img->host_processing_timestamp = host_processing_timestamp;
     img->capture_pacing_timestamp = host_processing_timestamp;
     _last_cached_frame = img_out;

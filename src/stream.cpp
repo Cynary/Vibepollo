@@ -3,6 +3,7 @@
  * @file src/stream.cpp
  * @brief Definitions for the streaming protocols.
  */
+#include "capture_timestamp_policy.h"
 
 // standard includes
 #include <algorithm>
@@ -2385,7 +2386,9 @@ namespace stream {
           // WGC composition times sit on the virtual display's refresh grid.
           // Place the frame by the game's present cadence now that ETW has
           // had the encode time to deliver those presents.
-          packet->frame_timestamp = platf::dxgi::present_timing::refine_send_timestamp(*packet->frame_timestamp);
+          packet->frame_timestamp = video::capture_timing::send_timestamp(
+            *packet->frame_timestamp, packet->direct_capture,
+            platf::dxgi::present_timing::refine_send_timestamp);
         }
 #endif
         using rtp_tick = std::chrono::duration<uint32_t, std::ratio<1, 90000>>;

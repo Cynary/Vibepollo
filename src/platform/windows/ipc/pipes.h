@@ -58,6 +58,7 @@ namespace platf::dxgi {
     volatile LONG64 sequence;
     volatile LONG64 frame_id;
     volatile LONG64 frame_qpc;
+    volatile LONG64 direct_capture;  ///< Per-frame origin, covered by sequence. Host/helper must be updated together.
   };
 
   /**

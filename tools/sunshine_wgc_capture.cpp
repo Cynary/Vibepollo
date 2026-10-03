@@ -950,6 +950,7 @@ public:
     _frame_metadata->sequence = 0;
     _frame_metadata->frame_id = 0;
     _frame_metadata->frame_qpc = 0;
+    _frame_metadata->direct_capture = 0;
     return true;
   }
 
@@ -983,13 +984,14 @@ public:
     return data;
   }
 
-  void publish_frame_metadata(uint64_t frame_qpc) {
+  void publish_frame_metadata(uint64_t frame_qpc, bool direct_capture = false) {
     if (!_frame_metadata) {
       return;
     }
 
     InterlockedIncrement64(&_frame_metadata->sequence);
     InterlockedExchange64(&_frame_metadata->frame_qpc, static_cast<LONG64>(frame_qpc));
+    InterlockedExchange64(&_frame_metadata->direct_capture, direct_capture ? 1 : 0);
     InterlockedIncrement64(&_frame_metadata->frame_id);
     InterlockedIncrement64(&_frame_metadata->sequence);
   }

@@ -107,6 +107,7 @@ namespace platf::dxgi {
     struct frame_metadata_snapshot_t {
       LONG64 frame_id = 0;
       LONG64 frame_qpc = 0;
+      LONG64 direct_capture = 0;
     };
 
     bool read_frame_metadata_snapshot(const frame_metadata_t *metadata, frame_metadata_snapshot_t &snapshot) {
@@ -125,12 +126,14 @@ namespace platf::dxgi {
         std::atomic_thread_fence(std::memory_order_acquire);
         const auto frame_id = metadata->frame_id;
         const auto frame_qpc = metadata->frame_qpc;
+        const auto direct_capture = metadata->direct_capture;
         std::atomic_thread_fence(std::memory_order_acquire);
 
         const auto sequence_end = metadata->sequence;
         if (sequence_start == sequence_end && (sequence_end & 1) == 0) {
           snapshot.frame_id = frame_id;
           snapshot.frame_qpc = frame_qpc;
+          snapshot.direct_capture = direct_capture;
           return true;
         }
 
@@ -606,7 +609,7 @@ namespace platf::dxgi {
     return true;
   }
 
-  capture_e ipc_session_t::acquire(std::chrono::milliseconds timeout, winrt::com_ptr<ID3D11Texture2D> &gpu_tex_out, uint64_t &frame_qpc_out) {
+  capture_e ipc_session_t::acquire(std::chrono::milliseconds timeout, winrt::com_ptr<ID3D11Texture2D> &gpu_tex_out, uint64_t &frame_qpc_out, bool &direct_capture_out) {
     const auto wait_start = std::chrono::steady_clock::now();
     auto wait_status = wait_for_frame(timeout);
     const auto event_wait = std::chrono::steady_clock::now() - wait_start;
@@ -614,7 +617,7 @@ namespace platf::dxgi {
       return wait_status;
     }
 
-    auto status = lock_frame(gpu_tex_out, frame_qpc_out);
+    auto status = lock_frame(gpu_tex_out, frame_qpc_out, direct_capture_out);
     if (status != capture_e::ok) {
       return status;
     }
@@ -636,7 +639,7 @@ namespace platf::dxgi {
     return capture_e::ok;
   }
 
-  capture_e ipc_session_t::lock_frame(winrt::com_ptr<ID3D11Texture2D> &gpu_tex_out, uint64_t &frame_qpc_out) {
+  capture_e ipc_session_t::lock_frame(winrt::com_ptr<ID3D11Texture2D> &gpu_tex_out, uint64_t &frame_qpc_out, bool &direct_capture_out) {
     // Additional validation: ensure required resources are available
     if (!_shared_texture || !_keyed_mutex) {
       _force_reinit = true;
@@ -713,6 +716,7 @@ namespace platf::dxgi {
     // Set output parameters
     gpu_tex_out = _shared_texture;
     frame_qpc_out = _frame_qpc;
+    direct_capture_out = snapshot.direct_capture == 1;
 
     return capture_e::ok;
   }
